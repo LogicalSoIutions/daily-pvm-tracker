@@ -31,6 +31,23 @@ The overview includes a **Save data** button. It opens a system save dialog with
 JSON filename, allowing the user to open the snapshot through PvM Hub's private local-file viewer.
 Saving a copy does not enable website uploads or change the plugin's stored history.
 
+## PvM Hub website
+
+[PvM Hub](https://osrs.pvm-hub.com) turns Daily PvM Tracker data into a browser dashboard with
+7-day, 30-day, and all-time views. It summarizes boss kills, active days, estimated loot, confirmed
+value, and the difference between estimates and actual returns. The dashboard also includes a daily
+loot chart, recent activity, and a searchable boss-by-boss breakdown.
+
+There are two ways to view tracker data on the website:
+
+- **Private local file:** Use **Save data** in the plugin, then choose **View a local file** on PvM
+  Hub. The file is read only in the current browser tab; it is not uploaded or stored by the website
+  and disappears from the page when that local view is closed.
+- **Automatic profile updates:** Enable **Upload to PvM Hub (optional)** in the plugin settings to
+  send the character's complete snapshot at most once every 30 minutes. This creates or updates a
+  website profile that can be found by searching for the character's RuneScape name. This mode sends
+  the snapshot and IP address to a third-party server and is disabled by default.
+
 ## Estimated and confirmed GP
 
 Estimated GP is the Grand Exchange value when loot is captured, plus any manually entered split.
