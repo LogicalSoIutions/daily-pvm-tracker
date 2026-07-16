@@ -100,6 +100,9 @@ public class DailyPvmTrackerPanelTest
 			org.junit.Assert.assertTrue(text.contains("tracked locally"));
 			org.junit.Assert.assertTrue(text.contains("plugin settings"));
 			org.junit.Assert.assertTrue(text.contains("Upload to PvM-Hub.com"));
+			org.junit.Assert.assertTrue(text.contains("Hover over Estimated and Confirmed GP"));
+			org.junit.Assert.assertTrue(text.contains("right-click captured loot"));
+			org.junit.Assert.assertTrue(text.contains("edit its confirmed value"));
 		});
 	}
 

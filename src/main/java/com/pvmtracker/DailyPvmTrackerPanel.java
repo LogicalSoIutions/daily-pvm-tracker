@@ -202,7 +202,7 @@ final class DailyPvmTrackerPanel extends PluginPanel
 		aboutTitle.setFont(aboutTitle.getFont().deriveFont(Font.BOLD));
 		about.add(aboutTitle);
 		about.add(Box.createVerticalStrut(4));
-		JTextArea aboutText = wrappedText("Your boss kills, loot, and GP are tracked locally on this computer. Save a private file above, or enable Upload to PvM-Hub.com in the plugin settings to keep your web profile updated automatically.", 9, MUTED, 5);
+		JTextArea aboutText = wrappedText("Your boss kills, loot, and GP are tracked locally on this computer. Save a private file above, or enable Upload to PvM-Hub.com in the plugin settings to keep your web profile updated automatically.\n\nHover over Estimated and Confirmed GP to see how each value is calculated. In a boss view, right-click captured loot to mark it kept, edit its confirmed value, or hide it from totals.", 9, MUTED, 9);
 		aboutText.setName("pvm-hub-info-text");
 		about.add(aboutText);
 		fillWidth(about);
