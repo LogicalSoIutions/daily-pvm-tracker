@@ -43,6 +43,8 @@ final class BossRegistry
 		alias("Tumeken's Warden", "Tombs of Amascut");
 		alias("The Wardens", "Tombs of Amascut");
 		alias("Verzik Vitur", "Theatre of Blood");
+		alias("Theatre of Blood: Entry Mode", "Theatre of Blood: Entry Mode");
+		alias("Tombs of Amascut: Entry Mode", "Tombs of Amascut: Entry Mode");
 		alias("The Great Olm", "Chambers of Xeric");
 		alias("Branda the Fire Queen", "The Royal Titans");
 		alias("Eldric the Ice King", "The Royal Titans");

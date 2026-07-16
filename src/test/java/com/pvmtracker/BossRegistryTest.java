@@ -38,8 +38,10 @@ public class BossRegistryTest
 			"Chambers of Xeric",
 			"Chambers of Xeric: Challenge Mode",
 			"Theatre of Blood",
+			"Theatre of Blood: Entry Mode",
 			"Theatre of Blood: Hard Mode",
 			"Tombs of Amascut",
+			"Tombs of Amascut: Entry Mode",
 			"Tombs of Amascut: Expert Mode"
 		};
 		for (String raid : raids)

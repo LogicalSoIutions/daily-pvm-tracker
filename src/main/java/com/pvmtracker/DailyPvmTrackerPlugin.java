@@ -77,8 +77,8 @@ import okhttp3.OkHttpClient;
 public class DailyPvmTrackerPlugin extends Plugin
 {
 	private static final long INVALID_ACCOUNT = -1L;
-	// Loot and completion chat do not arrive in a guaranteed order. Keep the loot event
-	// through the following ticks so its exact in-game KC can be attached.
+	// Ordinary loot and completion chat do not arrive in a guaranteed order. Raid
+	// completions are instead retained until their matching reward chest is claimed.
 	private static final int LOOT_CHAT_MATCH_TICKS = 10;
 	private static final Duration RECENT_LOOT_KC_MATCH_WINDOW = Duration.ofSeconds(15);
 	private static final long PVM_HUB_UPLOAD_INTERVAL_MILLIS = 5L * 60L * 1000L;
@@ -272,7 +272,8 @@ public class DailyPvmTrackerPlugin extends Plugin
 		for (int i = pendingLoot.size() - 1; i >= 0; i--)
 		{
 			PendingLoot pending = pendingLoot.get(i);
-			if (!pending.completionHandled && isWithinLootChatMatchWindow(tick, pending.tick))
+			if (!pending.completionHandled && RaidLootMatcher.matchesCompletion(pending.source, source)
+				&& isWithinLootChatMatchWindow(tick, pending.tick))
 			{
 				pending.source = source;
 				pending.killCount = observation.killCount;
@@ -362,14 +363,24 @@ public class DailyPvmTrackerPlugin extends Plugin
 		{
 			return;
 		}
+		if (RaidLootMatcher.isNonRewardLoot(canonicalSource, items.size(),
+			items.size() == 1 ? items.get(0).itemId : -1))
+		{
+			return;
+		}
 
 		int tick = client.getTickCount();
 		boolean completionHandled = recentChatCompletion != null
-			&& isWithinLootChatMatchWindow(tick, recentChatCompletion.tick);
+			&& canMatchCompletionLoot(tick, recentChatCompletion.tick, canonicalSource,
+				recentChatCompletion.source);
 		String source = completionHandled ? recentChatCompletion.source : canonicalSource;
 		pendingLoot.add(new PendingLoot(activeAccount, LocalDate.now(), source,
 			Math.max(1, event.getAmount()), items, tick, completionHandled,
 			completionHandled ? recentChatCompletion.killCount : null, Instant.now().toString()));
+		if (completionHandled && RaidLootMatcher.isRaid(source))
+		{
+			recentChatCompletion = null;
+		}
 	}
 
 	private List<CapturedItem> captureItems(java.util.Collection<ItemStack> stacks)
@@ -418,7 +429,8 @@ public class DailyPvmTrackerPlugin extends Plugin
 			iterator.remove();
 			executeStorage(() -> recordLoot(pending));
 		}
-		if (recentChatCompletion != null && currentTick != Integer.MAX_VALUE
+		if (recentChatCompletion != null && !RaidLootMatcher.isRaid(recentChatCompletion.source)
+			&& currentTick != Integer.MAX_VALUE
 			&& currentTick - recentChatCompletion.tick > LOOT_CHAT_MATCH_TICKS)
 		{
 			recentChatCompletion = null;
@@ -428,6 +440,14 @@ public class DailyPvmTrackerPlugin extends Plugin
 	static boolean isWithinLootChatMatchWindow(int firstTick, int secondTick)
 	{
 		return Math.abs(firstTick - secondTick) <= LOOT_CHAT_MATCH_TICKS;
+	}
+
+	static boolean canMatchCompletionLoot(int lootTick, int completionTick, String lootSource,
+		String completionSource)
+	{
+		return RaidLootMatcher.matchesCompletion(lootSource, completionSource)
+			&& (RaidLootMatcher.isRaid(completionSource)
+				|| isWithinLootChatMatchWindow(lootTick, completionTick));
 	}
 
 	@Subscribe
@@ -456,6 +476,7 @@ public class DailyPvmTrackerPlugin extends Plugin
 	private void activateCharacter(long accountHash, String name, HiscoreEndpoint endpoint)
 	{
 		activeAccount = accountHash;
+		recentChatCompletion = null;
 		cancelUpload();
 		lastUploadAttemptAt = 0L;
 		trackingStatus = "Tracking locally. Checking hiscores for missed KC…";

@@ -53,4 +53,18 @@ public class KillCountServiceTest
 		assertEquals(Integer.valueOf(1), day.recoveredKills.get("Maggot King"));
 		assertEquals(Integer.valueOf(485), data.lastKnownKillCounts.get("Maggot King"));
 	}
+
+	@Test
+	public void firstLocallyTrackedRaidModeInfersItsStartFromExactChatCount()
+	{
+		TrackerData data = new TrackerData();
+
+		assertTrue(service.recordCompletion(data, date, "Theatre of Blood: Entry Mode", 2));
+
+		TrackerData.KcDay day = data.kcDays.get(date.toString());
+		assertEquals(Integer.valueOf(1), day.kills.get("Theatre of Blood: Entry Mode"));
+		assertEquals(Integer.valueOf(1), day.startingKillCounts.get("Theatre of Blood: Entry Mode"));
+		assertEquals(Integer.valueOf(2), day.endingKillCounts.get("Theatre of Blood: Entry Mode"));
+		assertEquals(Integer.valueOf(2), data.lastKnownKillCounts.get("Theatre of Blood: Entry Mode"));
+	}
 }
