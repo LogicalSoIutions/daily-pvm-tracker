@@ -41,6 +41,7 @@ final class TrackerStore
 			{
 				data = new TrackerData();
 			}
+			data.schemaVersion = 2;
 			TrackerDataEditor.recalculateAllSourceTotals(data);
 			return data;
 		}

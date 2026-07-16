@@ -9,7 +9,7 @@ import java.util.List;
 
 final class TrackerData
 {
-	int schemaVersion = 1;
+	int schemaVersion = 2;
 	String lastKnownName = "";
 	String lastKnownKillCountsAt;
 	Map<String, Integer> lastKnownKillCounts = new LinkedHashMap<>();

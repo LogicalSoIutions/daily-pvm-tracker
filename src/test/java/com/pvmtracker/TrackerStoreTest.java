@@ -43,7 +43,7 @@ public class TrackerStoreTest
 
 		TrackerData loadedFirst = store.load(11L);
 		TrackerData loadedSecond = store.load(22L);
-		assertEquals(1, loadedFirst.schemaVersion);
+		assertEquals(2, loadedFirst.schemaVersion);
 		assertEquals("One", loadedFirst.lastKnownName);
 		assertEquals(Integer.valueOf(42), loadedFirst.lastKnownKillCounts.get("Vorkath"));
 		assertEquals(Long.valueOf(12_500_000L), loadedFirst.lootDays.get("2026-07-15").manualAdjustments.get("Nex"));
@@ -96,7 +96,7 @@ public class TrackerStoreTest
 		{
 			exported = new GsonBuilder().create().fromJson(reader, TrackerData.class);
 		}
-		assertEquals(1, exported.schemaVersion);
+		assertEquals(2, exported.schemaVersion);
 		assertEquals("Logical", exported.lastKnownName);
 		assertEquals(Integer.valueOf(42), exported.lastKnownKillCounts.get("Vorkath"));
 	}

@@ -77,8 +77,8 @@ import okhttp3.OkHttpClient;
 public class DailyPvmTrackerPlugin extends Plugin
 {
 	private static final long INVALID_ACCOUNT = -1L;
-	// Ordinary loot and completion chat do not arrive in a guaranteed order. Raid
-	// completions are instead retained until their matching reward chest is claimed.
+	// Ordinary loot and completion chat do not arrive in a guaranteed order. Raids
+	// and the Gauntlet are retained until their matching reward chest is claimed.
 	private static final int LOOT_CHAT_MATCH_TICKS = 10;
 	private static final Duration RECENT_LOOT_KC_MATCH_WINDOW = Duration.ofSeconds(15);
 	private static final long PVM_HUB_UPLOAD_INTERVAL_MILLIS = 5L * 60L * 1000L;
@@ -377,7 +377,7 @@ public class DailyPvmTrackerPlugin extends Plugin
 		pendingLoot.add(new PendingLoot(activeAccount, LocalDate.now(), source,
 			Math.max(1, event.getAmount()), items, tick, completionHandled,
 			completionHandled ? recentChatCompletion.killCount : null, Instant.now().toString()));
-		if (completionHandled && RaidLootMatcher.isRaid(source))
+		if (completionHandled && retainsCompletionUntilMatchingLoot(source))
 		{
 			recentChatCompletion = null;
 		}
@@ -429,7 +429,7 @@ public class DailyPvmTrackerPlugin extends Plugin
 			iterator.remove();
 			executeStorage(() -> recordLoot(pending));
 		}
-		if (recentChatCompletion != null && !RaidLootMatcher.isRaid(recentChatCompletion.source)
+		if (recentChatCompletion != null && !retainsCompletionUntilMatchingLoot(recentChatCompletion.source)
 			&& currentTick != Integer.MAX_VALUE
 			&& currentTick - recentChatCompletion.tick > LOOT_CHAT_MATCH_TICKS)
 		{
@@ -446,8 +446,15 @@ public class DailyPvmTrackerPlugin extends Plugin
 		String completionSource)
 	{
 		return RaidLootMatcher.matchesCompletion(lootSource, completionSource)
-			&& (RaidLootMatcher.isRaid(completionSource)
+			&& (retainsCompletionUntilMatchingLoot(completionSource)
 				|| isWithinLootChatMatchWindow(lootTick, completionTick));
+	}
+
+	static boolean retainsCompletionUntilMatchingLoot(String source)
+	{
+		return RaidLootMatcher.isRaid(source)
+			|| "The Gauntlet".equals(source)
+			|| "The Corrupted Gauntlet".equals(source);
 	}
 
 	@Subscribe

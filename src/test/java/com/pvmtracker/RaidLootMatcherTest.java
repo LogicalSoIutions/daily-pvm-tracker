@@ -26,4 +26,15 @@ public class RaidLootMatcherTest
 		assertFalse(DailyPvmTrackerPlugin.canMatchCompletionLoot(10_000, 100,
 			"Vorkath", "Vorkath"));
 	}
+
+	@Test
+	public void keepsGauntletCompletionUntilTheRewardChestArrives()
+	{
+		assertTrue(DailyPvmTrackerPlugin.canMatchCompletionLoot(10_000, 100,
+			"The Corrupted Gauntlet", "The Corrupted Gauntlet"));
+		assertTrue(DailyPvmTrackerPlugin.canMatchCompletionLoot(10_000, 100,
+			"The Gauntlet", "The Gauntlet"));
+		assertFalse(DailyPvmTrackerPlugin.canMatchCompletionLoot(10_000, 100,
+			"The Gauntlet", "The Corrupted Gauntlet"));
+	}
 }
