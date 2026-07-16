@@ -24,7 +24,7 @@ final class LootTransformationService
 			{
 				source.getValue().items.values().stream()
 					.filter(item -> intermediateName.equalsIgnoreCase(item.name) && item.quantity > item.confirmedQuantity)
-					.forEach(item -> lots.add(new Lot(source.getValue(), item)));
+					.forEach(item -> lots.add(new Lot(day.getKey(), source.getKey(), source.getValue(), item)));
 			});
 		});
 
@@ -54,6 +54,8 @@ final class LootTransformationService
 					ignored -> new TrackerData.LootItem(replacement.itemId, replacement.name));
 				revealed.quantity += take;
 				revealed.totalValue += newValue;
+				replaceKillLogItems(data, lot.date, lot.sourceName, intermediateName,
+					replacement, take, unitValue);
 				lot.source.totalValue += newValue - oldValue;
 				if (lot.intermediate.quantity == 0 && lot.intermediate.confirmedQuantity == 0)
 				{
@@ -64,7 +66,53 @@ final class LootTransformationService
 				changed = true;
 			}
 		}
+		if (changed)
+		{
+			TrackerDataEditor.recalculateAllSourceTotals(data);
+		}
 		return changed;
+	}
+
+	private static void replaceKillLogItems(TrackerData data, String date, String sourceName,
+		String intermediateName, ReplacementItem replacement, long quantity, long replacementUnitValue)
+	{
+		long remaining = quantity;
+		for (TrackerData.KillLogEntry kill : data.killLog)
+		{
+			if (remaining == 0 || !date.equals(kill.date) || !sourceName.equals(kill.source))
+			{
+				continue;
+			}
+			for (int i = 0; i < kill.items.size() && remaining > 0; i++)
+			{
+				TrackerData.KillLootItem intermediate = kill.items.get(i);
+				if (!intermediateName.equalsIgnoreCase(intermediate.name) || intermediate.quantity <= 0)
+				{
+					continue;
+				}
+				long take = Math.min(remaining, intermediate.quantity);
+				long oldUnitValue = intermediate.totalValue / intermediate.quantity;
+				intermediate.quantity -= take;
+				intermediate.totalValue -= oldUnitValue * take;
+				if (intermediate.quantity == 0)
+				{
+					kill.items.remove(i--);
+				}
+				TrackerData.KillLootItem revealed = kill.items.stream()
+					.filter(item -> item.itemId == replacement.itemId)
+					.findFirst()
+					.orElseGet(() ->
+					{
+						TrackerData.KillLootItem item = new TrackerData.KillLootItem(
+							replacement.itemId, replacement.name, 0, 0);
+						kill.items.add(item);
+						return item;
+					});
+				revealed.quantity += take;
+				revealed.totalValue += replacementUnitValue * take;
+				remaining -= take;
+			}
+		}
 	}
 
 	static final class ReplacementItem
@@ -85,11 +133,16 @@ final class LootTransformationService
 
 	private static final class Lot
 	{
+		private final String date;
+		private final String sourceName;
 		private final TrackerData.LootSource source;
 		private final TrackerData.LootItem intermediate;
 
-		private Lot(TrackerData.LootSource source, TrackerData.LootItem intermediate)
+		private Lot(String date, String sourceName, TrackerData.LootSource source,
+			TrackerData.LootItem intermediate)
 		{
+			this.date = date;
+			this.sourceName = sourceName;
 			this.source = source;
 			this.intermediate = intermediate;
 		}

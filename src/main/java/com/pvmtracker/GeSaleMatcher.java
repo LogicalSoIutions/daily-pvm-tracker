@@ -7,13 +7,25 @@ import java.util.Map;
 
 final class GeSaleMatcher
 {
+	enum ConfirmationMethod
+	{
+		GRAND_EXCHANGE,
+		HIGH_ALCHEMY
+	}
+
 	private GeSaleMatcher()
 	{
 	}
 
 	static MatchResult match(TrackerData data, int itemId, int soldQuantity, long proceeds)
 	{
-		if (soldQuantity <= 0 || proceeds <= 0)
+		return match(data, itemId, soldQuantity, proceeds, ConfirmationMethod.GRAND_EXCHANGE);
+	}
+
+	static MatchResult match(TrackerData data, int itemId, int confirmedQuantity, long proceeds,
+		ConfirmationMethod method)
+	{
+		if (confirmedQuantity <= 0 || proceeds <= 0)
 		{
 			return new MatchResult(0, 0);
 		}
@@ -28,17 +40,17 @@ final class GeSaleMatcher
 					TrackerData.LootItem item = source.getValue().items.get(itemId);
 					if (item != null && item.quantity > item.confirmedQuantity)
 					{
-						lots.add(new Lot(item));
+						lots.add(new Lot(day.getKey(), source.getKey(), item));
 					}
 				}));
 
 		long available = lots.stream().mapToLong(lot -> lot.item.quantity - lot.item.confirmedQuantity).sum();
-		long matchedQuantity = Math.min(available, soldQuantity);
+		long matchedQuantity = Math.min(available, confirmedQuantity);
 		if (matchedQuantity <= 0)
 		{
 			return new MatchResult(0, 0);
 		}
-		long matchedProceeds = prorate(proceeds, matchedQuantity, soldQuantity);
+		long matchedProceeds = prorate(proceeds, matchedQuantity, confirmedQuantity);
 		long remainingQuantity = matchedQuantity;
 		long remainingProceeds = matchedProceeds;
 		for (Lot lot : lots)
@@ -52,6 +64,17 @@ final class GeSaleMatcher
 				? remainingProceeds : prorate(matchedProceeds, take, matchedQuantity);
 			lot.item.confirmedQuantity += take;
 			lot.item.confirmedValue += allocation;
+			matchKillLog(data, lot.date, lot.source, itemId, take, allocation);
+			if (method == ConfirmationMethod.HIGH_ALCHEMY)
+			{
+				lot.item.alchConfirmedQuantity += take;
+				lot.item.alchConfirmedValue += allocation;
+			}
+			else
+			{
+				lot.item.geConfirmedQuantity += take;
+				lot.item.geConfirmedValue += allocation;
+			}
 			remainingQuantity -= take;
 			remainingProceeds -= allocation;
 			if (remainingQuantity == 0)
@@ -60,6 +83,38 @@ final class GeSaleMatcher
 			}
 		}
 		return new MatchResult(matchedQuantity, matchedProceeds);
+	}
+
+	private static void matchKillLog(TrackerData data, String date, String source, int itemId,
+		long quantity, long proceeds)
+	{
+		long remainingQuantity = quantity;
+		long remainingProceeds = proceeds;
+		for (TrackerData.KillLogEntry kill : data.killLog)
+		{
+			if (remainingQuantity == 0 || !date.equals(kill.date) || !source.equals(kill.source))
+			{
+				continue;
+			}
+			for (TrackerData.KillLootItem item : kill.items)
+			{
+				if (item.itemId != itemId || item.quantity <= item.confirmedQuantity)
+				{
+					continue;
+				}
+				long take = Math.min(remainingQuantity, item.quantity - item.confirmedQuantity);
+				long allocation = take == remainingQuantity
+					? remainingProceeds : prorate(proceeds, take, quantity);
+				item.confirmedQuantity += take;
+				item.confirmedValue += allocation;
+				remainingQuantity -= take;
+				remainingProceeds -= allocation;
+				if (remainingQuantity == 0)
+				{
+					return;
+				}
+			}
+		}
 	}
 
 	private static long prorate(long value, long numerator, long denominator)
@@ -82,10 +137,14 @@ final class GeSaleMatcher
 
 	private static final class Lot
 	{
+		private final String date;
+		private final String source;
 		private final TrackerData.LootItem item;
 
-		private Lot(TrackerData.LootItem item)
+		private Lot(String date, String source, TrackerData.LootItem item)
 		{
+			this.date = date;
+			this.source = source;
 			this.item = item;
 		}
 	}

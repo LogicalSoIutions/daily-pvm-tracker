@@ -12,12 +12,12 @@ import net.runelite.client.RuneLite;
 
 final class TrackerStore
 {
+	private static final int PROFILE_ID_VERSION = 1;
 	private final Gson gson;
 	private final Path directory;
 
 	TrackerStore(Gson gson)
 	{
-		// Keep the original directory so upgrades continue to find existing character histories.
 		this(gson, RuneLite.RUNELITE_DIR.toPath().resolve("pvm-raid-daily-tracker"));
 	}
 
@@ -41,6 +41,7 @@ final class TrackerStore
 			{
 				data = new TrackerData();
 			}
+			TrackerDataEditor.recalculateAllSourceTotals(data);
 			return data;
 		}
 	}
@@ -89,6 +90,6 @@ final class TrackerStore
 
 	private Path fileFor(long accountHash)
 	{
-		return directory.resolve(Long.toUnsignedString(accountHash) + ".json");
+		return directory.resolve(Long.toUnsignedString(accountHash) + "-v" + PROFILE_ID_VERSION + ".json");
 	}
 }

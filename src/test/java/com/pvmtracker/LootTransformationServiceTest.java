@@ -21,6 +21,11 @@ public class LootTransformationServiceTest
 		source.items.put(tarnished.itemId, tarnished);
 		day.sources.put("Maggot King", source);
 		data.lootDays.put("2026-07-15", day);
+		TrackerData.KillLogEntry kill = new TrackerData.KillLogEntry();
+		kill.date = "2026-07-15";
+		kill.source = "Maggot King";
+		kill.items.add(new TrackerData.KillLootItem(33691, "Tarnished necklace", 2, 72_000));
+		data.killLog.add(kill);
 
 		boolean changed = LootTransformationService.replace(data, "Tarnished necklace",
 			Collections.singletonList(new LootTransformationService.ReplacementItem(
@@ -32,6 +37,9 @@ public class LootTransformationServiceTest
 		assertEquals("Revealed necklace", source.items.get(33692).name);
 		assertEquals(4_500_000L, source.totalValue);
 		assertEquals(2, source.drops);
+		assertEquals(1, kill.items.stream().filter(item -> item.itemId == 33691).findFirst().get().quantity);
+		assertEquals(1, kill.items.stream().filter(item -> item.itemId == 33692).findFirst().get().quantity);
+		assertEquals(4_536_000L, kill.totalValue);
 	}
 
 	@Test

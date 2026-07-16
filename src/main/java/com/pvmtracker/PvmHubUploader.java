@@ -51,7 +51,30 @@ final class PvmHubUploader
 				{
 					if (!response.isSuccessful())
 					{
-						log.debug("PvM Hub upload returned HTTP {}", response.code());
+						String details = "";
+						try
+						{
+							if (response.body() != null)
+							{
+								details = response.body().string().replaceAll("\\s+", " ").trim();
+								if (details.length() > 2_000)
+								{
+									details = details.substring(0, 2_000) + "…";
+								}
+							}
+						}
+						catch (IOException ex)
+						{
+							log.debug("Unable to read PvM Hub error response", ex);
+						}
+						if (details.isEmpty())
+						{
+							log.debug("PvM Hub upload returned HTTP {}", response.code());
+						}
+						else
+						{
+							log.debug("PvM Hub upload returned HTTP {}: {}", response.code(), details);
+						}
 					}
 					callback.onComplete(completedCall, response.isSuccessful(), response.code());
 				}

@@ -16,6 +16,7 @@ final class DailySummaryService
 		TreeSet<LocalDate> dates = new TreeSet<>(Comparator.reverseOrder());
 		data.kcDays.keySet().stream().map(LocalDate::parse).forEach(dates::add);
 		data.lootDays.keySet().stream().map(LocalDate::parse).forEach(dates::add);
+		data.raidCompletions.stream().map(raid -> LocalDate.parse(raid.date)).forEach(dates::add);
 		dates.add(today);
 
 		List<DailySummary> result = new ArrayList<>();
@@ -33,7 +34,8 @@ final class DailySummaryService
 			LocalDate intervalEnd = kcDay != null && kcDay.intervalEnd != null
 				? LocalDate.parse(kcDay.intervalEnd) : date.isBefore(today) ? date.plusDays(1) : null;
 			TrackerData.LootDay lootDay = data.lootDays.get(date.toString());
-			List<DailySummary.LootSummary> loot = summarizeLoot(lootDay);
+			List<DailySummary.LootSummary> loot = summarizeLoot(data, lootDay);
+			List<DailySummary.RaidSummary> raids = summarizeRaids(data, date);
 			int totalKills = kills.values().stream().mapToInt(Integer::intValue).sum();
 			int totalRecoveredKills = recoveredKills.values().stream().mapToInt(Integer::intValue).sum();
 			long trackedLootValue = loot.stream().mapToLong(source -> source.value).sum();
@@ -44,17 +46,63 @@ final class DailySummaryService
 			long totalValue = trackedLootValue + totalAdjustment;
 			long confirmedValue = confirmedSalesValue + totalAdjustment;
 			boolean completed = date.isBefore(today);
-			if (showEmptyDays || completed || totalKills > 0 || totalValue > 0)
+			if (showEmptyDays || completed || totalKills > 0 || totalValue > 0 || !raids.isEmpty())
 			{
 				result.add(new DailySummary(date, intervalEnd, completed,
-					kills, recoveredKills, startingCounts, endingCounts, loot, totalKills, totalRecoveredKills,
+					kills, recoveredKills, startingCounts, endingCounts, loot, raids, totalKills, totalRecoveredKills,
 					trackedLootValue, confirmedValue, adjustments, totalAdjustment, totalValue));
 			}
 		}
 		return result;
 	}
 
-	private List<DailySummary.LootSummary> summarizeLoot(TrackerData.LootDay day)
+	private List<DailySummary.RaidSummary> summarizeRaids(TrackerData data, LocalDate date)
+	{
+		Map<String, RaidAccumulator> raids = new LinkedHashMap<>();
+		for (TrackerData.RaidCompletion completion : data.raidCompletions)
+		{
+			if (!date.toString().equals(completion.date))
+			{
+				continue;
+			}
+			RaidAccumulator raid = raids.computeIfAbsent(completion.source, ignored -> new RaidAccumulator());
+			raid.completions++;
+			if (completion.personalPoints != null)
+			{
+				raid.personalPoints += completion.personalPoints;
+				raid.pointRecords++;
+			}
+			if (completion.lootPoints != null)
+			{
+				raid.lootPoints += completion.lootPoints;
+			}
+			if (completion.teamPoints != null)
+			{
+				raid.teamPoints += completion.teamPoints;
+				raid.teamPointRecords++;
+			}
+			if (completion.raidLevel != null)
+			{
+				raid.minimumRaidLevel = raid.minimumRaidLevel == null ? completion.raidLevel
+					: Math.min(raid.minimumRaidLevel, completion.raidLevel);
+				raid.maximumRaidLevel = raid.maximumRaidLevel == null ? completion.raidLevel
+					: Math.max(raid.maximumRaidLevel, completion.raidLevel);
+			}
+			raid.totalUniqueChance += completion.uniqueChance;
+			raid.expectedUniqueValue += completion.expectedUniqueValue;
+			raid.estimateBasis = completion.estimateBasis;
+		}
+		return raids.entrySet().stream().map(entry ->
+		{
+			RaidAccumulator raid = entry.getValue();
+			return new DailySummary.RaidSummary(entry.getKey(), raid.completions, raid.personalPoints,
+				raid.pointRecords, raid.lootPoints, raid.teamPoints, raid.teamPointRecords,
+				raid.minimumRaidLevel, raid.maximumRaidLevel, raid.totalUniqueChance,
+				raid.expectedUniqueValue, raid.estimateBasis);
+		}).collect(Collectors.toList());
+	}
+
+	private List<DailySummary.LootSummary> summarizeLoot(TrackerData data, TrackerData.LootDay day)
 	{
 		if (day == null)
 		{
@@ -65,15 +113,40 @@ final class DailySummaryService
 			{
 				TrackerData.LootSource source = entry.getValue();
 				List<DailySummary.ItemSummary> items = source.items.values().stream()
+					.filter(item -> !data.isLootHidden(entry.getKey(), item.itemId))
 					.sorted(Comparator.comparingLong((TrackerData.LootItem item) -> item.totalValue).reversed())
 					.map(item -> new DailySummary.ItemSummary(item.itemId, item.name, item.quantity, item.totalValue,
-						item.confirmedQuantity, item.confirmedValue))
+						item.confirmedQuantity, item.confirmedValue, item.geConfirmedQuantity,
+						item.geConfirmedValue, item.alchConfirmedQuantity, item.alchConfirmedValue))
 					.collect(Collectors.toList());
-				long confirmedValue = source.items.values().stream().mapToLong(item -> item.confirmedValue).sum();
-				return new DailySummary.LootSummary(entry.getKey(), source.drops, source.totalValue, confirmedValue, items);
+				List<DailySummary.ItemSummary> hiddenItems = source.items.values().stream()
+					.filter(item -> data.isLootHidden(entry.getKey(), item.itemId))
+					.sorted(Comparator.comparing((TrackerData.LootItem item) -> item.name))
+					.map(item -> new DailySummary.ItemSummary(item.itemId, item.name, item.quantity, item.totalValue,
+						item.confirmedQuantity, item.confirmedValue, item.geConfirmedQuantity,
+						item.geConfirmedValue, item.alchConfirmedQuantity, item.alchConfirmedValue))
+					.collect(Collectors.toList());
+				long confirmedValue = items.stream().mapToLong(item -> item.confirmedValue).sum();
+				return new DailySummary.LootSummary(entry.getKey(), source.drops, source.totalValue,
+					confirmedValue, items, hiddenItems);
 			})
 			.sorted(Comparator.comparingLong((DailySummary.LootSummary source) -> source.value).reversed())
 			.collect(Collectors.toList());
+	}
+
+	private static final class RaidAccumulator
+	{
+		int completions;
+		long personalPoints;
+		int pointRecords;
+		long lootPoints;
+		long teamPoints;
+		int teamPointRecords;
+		Integer minimumRaidLevel;
+		Integer maximumRaidLevel;
+		double totalUniqueChance;
+		long expectedUniqueValue;
+		String estimateBasis;
 	}
 
 }

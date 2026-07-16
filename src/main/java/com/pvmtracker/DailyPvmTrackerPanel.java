@@ -32,10 +32,13 @@ import javax.swing.JLabel;
 import javax.swing.JComboBox;
 import javax.swing.JPanel;
 import javax.swing.JOptionPane;
+import javax.swing.JPopupMenu;
+import javax.swing.JMenuItem;
 import javax.swing.JScrollPane;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.Scrollable;
 import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.JComponent;
@@ -52,6 +55,7 @@ final class DailyPvmTrackerPanel extends PluginPanel
 	private static final Color TEXT = ColorScheme.TEXT_COLOR;
 	private static final Color MUTED = ColorScheme.LIGHT_GRAY_COLOR;
 	private static final Color VALUE = ColorScheme.GRAND_EXCHANGE_PRICE;
+	private static final Color ACCENT = new Color(246, 194, 76);
 	private static final Color ERROR = new Color(225, 90, 90);
 	private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("EEE, MMM d");
 
@@ -89,6 +93,11 @@ final class DailyPvmTrackerPanel extends PluginPanel
 
 			@Override
 			public void saveData(Path destination)
+			{
+			}
+
+			@Override
+			public void setLootHidden(String boss, int itemId, boolean hidden)
 			{
 			}
 
@@ -418,6 +427,14 @@ final class DailyPvmTrackerPanel extends PluginPanel
 		amounts.add(amount);
 		amounts.add(Box.createVerticalStrut(2));
 		amounts.add(confirmed);
+		DailySummary.RaidSummary raid = summary.findRaid(boss);
+		if (raid != null)
+		{
+			amounts.add(Box.createVerticalStrut(2));
+			JLabel expected = label("Unique EV " + formatGp(raid.expectedUniqueValue), 9, ACCENT);
+			expected.setHorizontalAlignment(SwingConstants.RIGHT);
+			amounts.add(expected);
+		}
 		row.add(left, BorderLayout.CENTER);
 		row.add(amounts, BorderLayout.EAST);
 		row.onClick(() -> showBoss(summary, boss));
@@ -460,27 +477,72 @@ final class DailyPvmTrackerPanel extends PluginPanel
 		detail.add(metricRow("KC at start", formatCount(summary.startingKillCounts.get(boss)), TEXT));
 		detail.add(metricRow("KC at end", formatCount(summary.endingKillCounts.get(boss)), TEXT));
 
+		DailySummary.RaidSummary raid = summary.findRaid(boss);
+		if (raid != null)
+		{
+			detail.add(Box.createVerticalStrut(15));
+			detail.add(sectionLabel("Raid points and expected value"));
+			detail.add(Box.createVerticalStrut(6));
+			detail.add(metricRow("Recorded raids", Integer.toString(raid.completions), TEXT));
+			if (raid.pointRecords > 0)
+			{
+				detail.add(metricRow("Personal points", String.format("%,d", raid.personalPoints), TEXT));
+				detail.add(metricRow("Average points", String.format("%,.0f",
+					raid.personalPoints / (double) raid.pointRecords), TEXT));
+				if (boss.startsWith("Tombs of Amascut"))
+				{
+					detail.add(metricRow("Loot-eligible points", String.format("%,d", raid.lootPoints), TEXT));
+				}
+			}
+			else
+			{
+				detail.add(metricRow("Contribution points", "Hidden by Theatre", MUTED));
+			}
+			if (raid.teamPointRecords > 0)
+			{
+				detail.add(metricRow("Team points", String.format("%,d", raid.teamPoints), TEXT));
+			}
+			if (raid.minimumRaidLevel != null)
+			{
+				String levels = raid.minimumRaidLevel.equals(raid.maximumRaidLevel)
+					? raid.minimumRaidLevel.toString() : raid.minimumRaidLevel + "–" + raid.maximumRaidLevel;
+				detail.add(metricRow("Raid level", levels, TEXT));
+			}
+			detail.add(metricRow("Unique chance / raid", String.format("%.2f%%",
+				100d * raid.totalUniqueChance / raid.completions), TEXT));
+			detail.add(metricRow("Expected unique value", formatGp(raid.expectedUniqueValue), ACCENT));
+			detail.add(metricRow("Estimate basis", raid.estimateBasis, MUTED));
+		}
+
 		long tracked = summary.bossTrackedValue(boss);
 		long adjustment = summary.bossAdjustment(boss);
 		detail.add(Box.createVerticalStrut(15));
 		detail.add(sectionLabel("GP breakdown"));
 		detail.add(Box.createVerticalStrut(6));
 		detail.add(metricRow("Estimated loot", formatGp(tracked), TEXT));
-		detail.add(metricRow("Confirmed GE sales", formatGp(summary.bossConfirmedSaleValue(boss)), VALUE));
+		detail.add(metricRow("Confirmed returns", formatGp(summary.bossConfirmedSaleValue(boss)), VALUE));
 		detail.add(metricRow("Confirmed split", formatSignedGp(adjustment), adjustment == 0 ? MUTED : VALUE));
 		detail.add(metricRow("Estimated total", formatGp(tracked + adjustment), TEXT));
 		detail.add(metricRow("Confirmed total", formatGp(summary.bossConfirmedValue(boss)), VALUE));
 
 		DailySummary.LootSummary loot = summary.findLoot(boss);
-		if (loot != null && !loot.items.isEmpty())
+		if (loot != null && (!loot.items.isEmpty() || !loot.hiddenItems.isEmpty()))
 		{
 			detail.add(Box.createVerticalStrut(15));
 			detail.add(sectionLabel("Captured items"));
 			detail.add(Box.createVerticalStrut(6));
 			for (DailySummary.ItemSummary item : loot.items)
 			{
+				String methods = item.confirmedValue == 0 ? ""
+					: "GE " + formatGp(item.geConfirmedValue) + " · HA " + formatGp(item.alchConfirmedValue);
 				detail.add(itemRow(item.quantity + " × " + item.name,
-					"Est. " + formatGp(item.value) + " · Conf. " + formatGp(item.confirmedValue)));
+					"Est. " + formatGp(item.value) + " · Conf. " + formatGp(item.confirmedValue), methods,
+					() -> actions.setLootHidden(boss, item.itemId, true)));
+			}
+			if (!loot.hiddenItems.isEmpty())
+			{
+				detail.add(Box.createVerticalStrut(6));
+				detail.add(hiddenLootButton(boss, loot.hiddenItems));
 			}
 			detail.add(Box.createVerticalStrut(8));
 			detail.add(deleteButton("Delete captured loot", () ->
@@ -563,6 +625,10 @@ final class DailyPvmTrackerPanel extends PluginPanel
 		for (DailySummary.LootSummary loot : summary.loot)
 		{
 			names.add(loot.source);
+		}
+		for (DailySummary.RaidSummary raid : summary.raids)
+		{
+			names.add(raid.source);
 		}
 		names.addAll(summary.manualAdjustments.keySet());
 		List<String> result = new ArrayList<>(names);
@@ -647,15 +713,69 @@ final class DailyPvmTrackerPanel extends PluginPanel
 		return row;
 	}
 
-	private JPanel itemRow(String name, String value)
+	private JPanel itemRow(String name, String value, String methods, Runnable hideAction)
 	{
-		JPanel row = new JPanel(new BorderLayout(7, 0));
+		JPanel row = new JPanel();
+		row.setLayout(new BoxLayout(row, BoxLayout.Y_AXIS));
 		row.setBackground(SURFACE);
 		row.setBorder(BorderFactory.createEmptyBorder(7, 10, 7, 10));
-		row.add(label(name, 9, TEXT), BorderLayout.CENTER);
-		row.add(label(value, 9, MUTED), BorderLayout.EAST);
+		row.add(label(name, 9, TEXT));
+		row.add(Box.createVerticalStrut(2));
+		JLabel amount = label(value, 9, MUTED);
+		if (!methods.isEmpty())
+		{
+			amount.setToolTipText(methods);
+		}
+		row.add(amount);
+		JPopupMenu menu = new JPopupMenu();
+		JMenuItem hide = new JMenuItem("Hide this item for this boss");
+		hide.addActionListener(event -> hideAction.run());
+		menu.add(hide);
+		addPopupListenerRecursively(row, menu);
+		row.setName("loot-item-row");
 		fillWidth(row);
 		return row;
+	}
+
+	private JButton hiddenLootButton(String boss, List<DailySummary.ItemSummary> hiddenItems)
+	{
+		JButton button = new JButton("Manage hidden loot (" + hiddenItems.size() + ")");
+		button.setAlignmentX(Component.LEFT_ALIGNMENT);
+		button.setName("hidden-loot-button");
+		button.setFocusPainted(false);
+		button.addActionListener(event ->
+		{
+			DailySummary.ItemSummary selected = (DailySummary.ItemSummary) JOptionPane.showInputDialog(this,
+				"Choose an item to show again for " + boss + ".", "Hidden loot",
+				JOptionPane.PLAIN_MESSAGE, null, hiddenItems.toArray(), hiddenItems.get(0));
+			if (selected != null)
+			{
+				actions.setLootHidden(boss, selected.itemId, false);
+			}
+		});
+		return button;
+	}
+
+	private static void addPopupListenerRecursively(Component component, JPopupMenu menu)
+	{
+		component.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseReleased(MouseEvent event)
+			{
+				if (event.isPopupTrigger() || SwingUtilities.isRightMouseButton(event))
+				{
+					menu.show(event.getComponent(), event.getX(), event.getY());
+				}
+			}
+		});
+		if (component instanceof Container)
+		{
+			for (Component child : ((Container) component).getComponents())
+			{
+				addPopupListenerRecursively(child, menu);
+			}
+		}
 	}
 
 	private JPanel emptyRow(String text)
@@ -806,6 +926,8 @@ final class DailyPvmTrackerPanel extends PluginPanel
 		void deleteBossLoot(LocalDate date, String boss);
 
 		void deleteDayGp(LocalDate date);
+
+		void setLootHidden(String boss, int itemId, boolean hidden);
 
 		void saveData(Path destination);
 

@@ -12,6 +12,8 @@ public class GeSaleMatcherTest
 		TrackerData data = new TrackerData();
 		TrackerData.LootItem oldLoot = addLoot(data, "2026-07-10", "Nex", 4151, 2);
 		TrackerData.LootItem newLoot = addLoot(data, "2026-07-14", "Abyssal Sire", 4151, 3);
+		TrackerData.KillLootItem oldKillLoot = addKillLoot(data, "2026-07-10", "Nex", 4151, 2);
+		TrackerData.KillLootItem newKillLoot = addKillLoot(data, "2026-07-14", "Abyssal Sire", 4151, 3);
 
 		GeSaleMatcher.MatchResult match = GeSaleMatcher.match(data, 4151, 4, 4_000_000L);
 
@@ -19,8 +21,30 @@ public class GeSaleMatcherTest
 		assertEquals(4_000_000L, match.value);
 		assertEquals(2, oldLoot.confirmedQuantity);
 		assertEquals(2_000_000L, oldLoot.confirmedValue);
+		assertEquals(2, oldLoot.geConfirmedQuantity);
+		assertEquals(2_000_000L, oldLoot.geConfirmedValue);
 		assertEquals(2, newLoot.confirmedQuantity);
 		assertEquals(2_000_000L, newLoot.confirmedValue);
+		assertEquals(2, oldKillLoot.confirmedQuantity);
+		assertEquals(2_000_000L, oldKillLoot.confirmedValue);
+		assertEquals(2, newKillLoot.confirmedQuantity);
+		assertEquals(2_000_000L, newKillLoot.confirmedValue);
+	}
+
+	@Test
+	public void recordsHighAlchemyAsItsOwnConfirmationMethod()
+	{
+		TrackerData data = new TrackerData();
+		TrackerData.LootItem loot = addLoot(data, "2026-07-10", "Vorkath", 11286, 1);
+
+		GeSaleMatcher.MatchResult match = GeSaleMatcher.match(data, 11286, 1, 60_000L,
+			GeSaleMatcher.ConfirmationMethod.HIGH_ALCHEMY);
+
+		assertEquals(1, match.quantity);
+		assertEquals(60_000L, loot.confirmedValue);
+		assertEquals(1, loot.alchConfirmedQuantity);
+		assertEquals(60_000L, loot.alchConfirmedValue);
+		assertEquals(0, loot.geConfirmedQuantity);
 	}
 
 	@Test
@@ -61,6 +85,19 @@ public class GeSaleMatcherTest
 		item.totalValue = quantity * 1_500_000L;
 		source.items.put(itemId, item);
 		source.totalValue += item.totalValue;
+		return item;
+	}
+
+	private static TrackerData.KillLootItem addKillLoot(TrackerData data, String date, String boss,
+		int itemId, long quantity)
+	{
+		TrackerData.KillLogEntry kill = new TrackerData.KillLogEntry();
+		kill.date = date;
+		kill.source = boss;
+		TrackerData.KillLootItem item = new TrackerData.KillLootItem(itemId, "Tracked item", quantity,
+			quantity * 1_500_000L);
+		kill.items.add(item);
+		data.killLog.add(kill);
 		return item;
 	}
 }

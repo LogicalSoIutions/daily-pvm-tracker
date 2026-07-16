@@ -97,6 +97,62 @@ public class DailySummaryServiceTest
 		assertEquals(Integer.valueOf(101), live.endingKillCounts.get("Vorkath"));
 	}
 
+	@Test
+	public void excludesHiddenLootFromItemsAndConfirmedValue()
+	{
+		TrackerData data = new TrackerData();
+		LocalDate today = LocalDate.parse("2026-07-15");
+		TrackerData.LootDay day = new TrackerData.LootDay();
+		TrackerData.LootSource source = new TrackerData.LootSource();
+		TrackerData.LootItem visible = new TrackerData.LootItem(1, "Visible");
+		visible.quantity = 1;
+		visible.totalValue = 1_000L;
+		visible.confirmedValue = 900L;
+		TrackerData.LootItem hidden = new TrackerData.LootItem(2, "Hidden");
+		hidden.quantity = 1;
+		hidden.totalValue = 500L;
+		hidden.confirmedValue = 400L;
+		source.items.put(1, visible);
+		source.items.put(2, hidden);
+		source.totalValue = 1_000L;
+		day.sources.put("Vorkath", source);
+		data.lootDays.put(today.toString(), day);
+		data.hiddenLootFor("Vorkath").add(2);
+
+		DailySummary summary = summaryService.build(data, today, true).get(0);
+		DailySummary.LootSummary loot = summary.findLoot("Vorkath");
+		assertEquals(1_000L, summary.trackedLootValue);
+		assertEquals(900L, summary.confirmedValue);
+		assertEquals(1, loot.items.size());
+		assertEquals(1, loot.hiddenItems.size());
+		assertEquals(2, loot.hiddenItems.get(0).itemId);
+	}
+
+	@Test
+	public void summarizesRaidPointsAndExpectedUniqueValueByDay()
+	{
+		TrackerData data = new TrackerData();
+		TrackerData.RaidCompletion raid = new TrackerData.RaidCompletion();
+		raid.date = "2026-07-15";
+		raid.source = "Tombs of Amascut: Expert Mode";
+		raid.personalPoints = 42_000;
+		raid.lootPoints = 37_000;
+		raid.raidLevel = 400;
+		raid.uniqueChance = .10d;
+		raid.expectedUniqueValue = 5_724_680L;
+		raid.estimateBasis = "Uncapped point and raid-level unique EV";
+		data.raidCompletions.add(raid);
+
+		DailySummary summary = summaryService.build(data, LocalDate.parse("2026-07-15"), false).get(0);
+		DailySummary.RaidSummary raids = summary.findRaid("Tombs of Amascut: Expert Mode");
+
+		assertEquals(1, raids.completions);
+		assertEquals(42_000L, raids.personalPoints);
+		assertEquals(37_000L, raids.lootPoints);
+		assertEquals(Integer.valueOf(400), raids.minimumRaidLevel);
+		assertEquals(5_724_680L, raids.expectedUniqueValue);
+	}
+
 	private static Map<String, Integer> counts(Object... values)
 	{
 		Map<String, Integer> result = new LinkedHashMap<>();

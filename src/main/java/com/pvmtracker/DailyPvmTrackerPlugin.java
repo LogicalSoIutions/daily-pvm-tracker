@@ -8,12 +8,16 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -26,12 +30,20 @@ import net.runelite.api.ChatMessageType;
 import net.runelite.api.GameState;
 import net.runelite.api.GrandExchangeOffer;
 import net.runelite.api.GrandExchangeOfferState;
+import net.runelite.api.InventoryID;
+import net.runelite.api.Item;
 import net.runelite.api.ItemComposition;
+import net.runelite.api.ItemContainer;
 import net.runelite.api.Player;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.GrandExchangeOfferChanged;
+import net.runelite.api.events.ItemContainerChanged;
+import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.gameval.ItemID;
+import net.runelite.api.gameval.VarbitID;
+import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
@@ -50,6 +62,7 @@ import net.runelite.client.plugins.loottracker.LootReceived;
 import net.runelite.client.plugins.loottracker.LootTrackerPlugin;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.http.api.loottracker.LootRecordType;
 import okhttp3.Call;
 import okhttp3.OkHttpClient;
@@ -64,8 +77,11 @@ import okhttp3.OkHttpClient;
 public class DailyPvmTrackerPlugin extends Plugin
 {
 	private static final long INVALID_ACCOUNT = -1L;
-	private static final int LOOT_CHAT_MATCH_TICKS = 2;
-	private static final long PVM_HUB_UPLOAD_INTERVAL_MILLIS = 30L * 60L * 1000L;
+	// Loot and completion chat do not arrive in a guaranteed order. Keep the loot event
+	// through the following ticks so its exact in-game KC can be attached.
+	private static final int LOOT_CHAT_MATCH_TICKS = 10;
+	private static final Duration RECENT_LOOT_KC_MATCH_WINDOW = Duration.ofSeconds(15);
+	private static final long PVM_HUB_UPLOAD_INTERVAL_MILLIS = 5L * 60L * 1000L;
 
 	@Inject
 	private Client client;
@@ -81,10 +97,13 @@ public class DailyPvmTrackerPlugin extends Plugin
 	private DailyPvmTrackerConfig config;
 	@Inject
 	private OkHttpClient httpClient;
+	@Inject
+	private ClientThread clientThread;
 
 	private final DailySummaryService summaryService = new DailySummaryService();
 	private final KillCountService killCountService = new KillCountService();
 	private final List<PendingLoot> pendingLoot = new ArrayList<>();
+	private final HighAlchTracker highAlchTracker = new HighAlchTracker();
 	private ScheduledExecutorService storageExecutor;
 	private TrackerStore store;
 	private DailyPvmTrackerPanel panel;
@@ -133,6 +152,12 @@ public class DailyPvmTrackerPlugin extends Plugin
 			}
 
 			@Override
+			public void setLootHidden(String boss, int itemId, boolean hidden)
+			{
+				DailyPvmTrackerPlugin.this.setLootHidden(boss, itemId, hidden);
+			}
+
+			@Override
 			public void saveData(Path destination)
 			{
 				DailyPvmTrackerPlugin.this.saveData(destination);
@@ -166,6 +191,7 @@ public class DailyPvmTrackerPlugin extends Plugin
 		geSyncOnTick = false;
 		hiscoreRequestInFlight = false;
 		pendingLoot.clear();
+		highAlchTracker.clear();
 		recentChatCompletion = null;
 		trackingStatus = "Tracking locally.";
 		lastUploadAttemptAt = 0L;
@@ -229,21 +255,23 @@ public class DailyPvmTrackerPlugin extends Plugin
 			return;
 		}
 		String source = observation.source;
+		TrackerData.RaidCompletion raidCompletion = captureRaidCompletion(source, observation.killCount);
 		int tick = client.getTickCount();
 		for (int i = pendingLoot.size() - 1; i >= 0; i--)
 		{
 			PendingLoot pending = pendingLoot.get(i);
-			if (!pending.completionHandled && Math.abs(tick - pending.tick) <= LOOT_CHAT_MATCH_TICKS)
+			if (!pending.completionHandled && isWithinLootChatMatchWindow(tick, pending.tick))
 			{
 				pending.source = source;
+				pending.killCount = observation.killCount;
 				pending.completionHandled = true;
 				break;
 			}
 		}
-		recentChatCompletion = new RecentCompletion(source, tick);
+		recentChatCompletion = new RecentCompletion(source, observation.killCount, tick);
 		long accountHash = activeAccount;
 		LocalDate date = LocalDate.now();
-		executeStorage(() -> recordCompletion(accountHash, date, source, observation.killCount));
+		executeStorage(() -> recordCompletion(accountHash, date, source, observation.killCount, raidCompletion));
 	}
 
 	@Subscribe
@@ -256,6 +284,44 @@ public class DailyPvmTrackerPlugin extends Plugin
 		GeOfferUpdate update = captureOffer(event.getSlot(), event.getOffer());
 		long accountHash = activeAccount;
 		executeStorage(() -> processGeOffers(accountHash, java.util.Collections.singletonList(update)));
+	}
+
+	@Subscribe
+	public void onMenuOptionClicked(MenuOptionClicked event)
+	{
+		if (activeAccount == INVALID_ACCOUNT || !"Cast".equals(event.getMenuOption())
+			|| !event.getMenuTarget().contains("High Level Alchemy"))
+		{
+			return;
+		}
+		int itemId = itemManager.canonicalize(event.getItemId());
+		ItemComposition composition = itemManager.getItemComposition(itemId);
+		ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);
+		highAlchTracker.begin(itemId, inventoryQuantity(inventory, itemId),
+			inventoryQuantity(inventory, ItemID.COINS), composition.getHaPrice(), client.getTickCount());
+	}
+
+	@Subscribe
+	public void onItemContainerChanged(ItemContainerChanged event)
+	{
+		if (activeAccount == INVALID_ACCOUNT || event.getContainerId() != InventoryID.INVENTORY.getId())
+		{
+			return;
+		}
+		ItemContainer inventory = event.getItemContainer();
+		int itemId = highAlchTracker.pendingItemId();
+		if (itemId < 0)
+		{
+			return;
+		}
+		HighAlchTracker.Confirmation confirmation = highAlchTracker.observe(itemId,
+			inventoryQuantity(inventory, itemId), inventoryQuantity(inventory, ItemID.COINS),
+			client.getTickCount());
+		if (confirmation != null)
+		{
+			long accountHash = activeAccount;
+			executeStorage(() -> processHighAlch(accountHash, confirmation));
+		}
 	}
 
 	@Subscribe
@@ -287,10 +353,11 @@ public class DailyPvmTrackerPlugin extends Plugin
 
 		int tick = client.getTickCount();
 		boolean completionHandled = recentChatCompletion != null
-			&& Math.abs(tick - recentChatCompletion.tick) <= LOOT_CHAT_MATCH_TICKS;
+			&& isWithinLootChatMatchWindow(tick, recentChatCompletion.tick);
 		String source = completionHandled ? recentChatCompletion.source : canonicalSource;
 		pendingLoot.add(new PendingLoot(activeAccount, LocalDate.now(), source,
-			Math.max(1, event.getAmount()), items, tick, completionHandled));
+			Math.max(1, event.getAmount()), items, tick, completionHandled,
+			completionHandled ? recentChatCompletion.killCount : null, Instant.now().toString()));
 	}
 
 	private List<CapturedItem> captureItems(java.util.Collection<ItemStack> stacks)
@@ -301,10 +368,29 @@ public class DailyPvmTrackerPlugin extends Plugin
 			int itemId = itemManager.canonicalize(stack.getId());
 			ItemComposition composition = itemManager.getItemComposition(itemId);
 			long quantity = stack.getQuantity();
-			long value = (long) itemManager.getItemPrice(itemId) * quantity;
+			long unitValue = ItemValuation.unitValue(itemManager.getItemPrice(itemId),
+				composition.getHaPrice(), config.highAlchPricesOnly());
+			long value = unitValue * quantity;
 			items.add(new CapturedItem(itemId, composition.getName(), quantity, value));
 		}
 		return items;
+	}
+
+	private long inventoryQuantity(ItemContainer inventory, int canonicalItemId)
+	{
+		if (inventory == null)
+		{
+			return 0;
+		}
+		long quantity = 0;
+		for (Item item : inventory.getItems())
+		{
+			if (item.getId() >= 0 && itemManager.canonicalize(item.getId()) == canonicalItemId)
+			{
+				quantity += item.getQuantity();
+			}
+		}
+		return quantity;
 	}
 
 	private void flushPendingLoot(int currentTick)
@@ -313,7 +399,7 @@ public class DailyPvmTrackerPlugin extends Plugin
 		while (iterator.hasNext())
 		{
 			PendingLoot pending = iterator.next();
-			if (currentTick != Integer.MAX_VALUE && currentTick - pending.tick < LOOT_CHAT_MATCH_TICKS)
+			if (currentTick != Integer.MAX_VALUE && isWithinLootChatMatchWindow(currentTick, pending.tick))
 			{
 				continue;
 			}
@@ -325,6 +411,11 @@ public class DailyPvmTrackerPlugin extends Plugin
 		{
 			recentChatCompletion = null;
 		}
+	}
+
+	static boolean isWithinLootChatMatchWindow(int firstTick, int secondTick)
+	{
+		return Math.abs(firstTick - secondTick) <= LOOT_CHAT_MATCH_TICKS;
 	}
 
 	@Subscribe
@@ -369,6 +460,7 @@ public class DailyPvmTrackerPlugin extends Plugin
 				loadedAccount = accountHash;
 				data = loaded;
 				data.lastKnownName = name;
+				backfillMissingValues(accountHash, LootValueBackfill.missingItemIds(data));
 				geSyncOnTick = true;
 				refreshPanel();
 				maybeUploadSnapshot(accountHash, false);
@@ -379,6 +471,33 @@ public class DailyPvmTrackerPlugin extends Plugin
 				log.debug("Unable to load Daily PvM Tracker data", ex);
 				showStatus(name, "Could not read this character's local history.");
 			}
+		});
+	}
+
+	private void backfillMissingValues(long accountHash, Set<Integer> itemIds)
+	{
+		if (itemIds.isEmpty())
+		{
+			return;
+		}
+		clientThread.invokeLater(() ->
+		{
+			Map<Integer, Long> unitValues = new LinkedHashMap<>();
+			boolean highAlchOnly = config.highAlchPricesOnly();
+			for (int itemId : itemIds)
+			{
+				ItemComposition composition = itemManager.getItemComposition(itemId);
+				unitValues.put(itemId, ItemValuation.unitValue(itemManager.getItemPrice(itemId),
+					composition.getHaPrice(), highAlchOnly));
+			}
+			executeStorage(() ->
+			{
+				if (loadedAccount == accountHash && activeAccount == accountHash && data != null
+					&& LootValueBackfill.apply(data, unitValues))
+				{
+					saveAndRefresh(accountHash);
+				}
+			});
 		});
 	}
 
@@ -432,16 +551,84 @@ public class DailyPvmTrackerPlugin extends Plugin
 		return killCounts;
 	}
 
-	private void recordCompletion(long accountHash, LocalDate date, String sourceName, int exactKillCount)
+	private TrackerData.RaidCompletion captureRaidCompletion(String source, int killCount)
+	{
+		if (!source.startsWith("Chambers of Xeric") && !source.startsWith("Theatre of Blood")
+			&& !source.startsWith("Tombs of Amascut"))
+		{
+			return null;
+		}
+		TrackerData.RaidCompletion raid = new TrackerData.RaidCompletion();
+		raid.id = UUID.randomUUID().toString();
+		raid.date = LocalDate.now().toString();
+		raid.occurredAt = Instant.now().toString();
+		raid.source = source;
+		raid.killCount = killCount;
+		if (source.startsWith("Chambers of Xeric"))
+		{
+			raid.personalPoints = Math.max(0, client.getVarpValue(VarPlayerID.RAIDS_PLAYERSCORE));
+			raid.lootPoints = raid.personalPoints;
+			raid.teamPoints = Math.max(0, client.getVarbitValue(VarbitID.RAIDS_CLIENT_PARTYSCORE));
+		}
+		else if (source.startsWith("Tombs of Amascut"))
+		{
+			raid.personalPoints = Math.max(0, client.getVarpValue(VarPlayerID.TOA_PERSONAL_CONTRIBUTION));
+			raid.lootPoints = Math.max(0, raid.personalPoints - 5_000);
+			raid.raidLevel = Math.max(0, client.getVarbitValue(VarbitID.TOA_CLIENT_RAID_LEVEL));
+		}
+		int points = raid.lootPoints == null ? 0 : raid.lootPoints;
+		int level = raid.raidLevel == null ? 0 : raid.raidLevel;
+		RaidValueEstimator.Estimate estimate = RaidValueEstimator.estimate(source, points, level);
+		raid.uniqueChance = estimate.uniqueChance;
+		raid.expectedUniqueValue = estimate.expectedUniqueValue;
+		raid.estimateBasis = estimate.basis;
+		return raid;
+	}
+
+	private void recordCompletion(long accountHash, LocalDate date, String sourceName, int exactKillCount,
+		TrackerData.RaidCompletion raidCompletion)
 	{
 		if (loadedAccount != accountHash || activeAccount != accountHash || data == null)
 		{
 			return;
 		}
-		if (killCountService.recordCompletion(data, date, sourceName, exactKillCount))
+		boolean completionRecorded = killCountService.recordCompletion(data, date, sourceName, exactKillCount);
+		boolean changed = completionRecorded;
+		changed |= attachKillCountToRecentLoot(data, sourceName, exactKillCount);
+		if (changed)
 		{
+			if (raidCompletion != null && completionRecorded)
+			{
+				data.raidCompletions.add(raidCompletion);
+			}
 			saveAndRefresh(accountHash);
 		}
+	}
+
+	private boolean attachKillCountToRecentLoot(TrackerData trackerData, String sourceName, int exactKillCount)
+	{
+		Instant now = Instant.now();
+		for (int i = trackerData.killLog.size() - 1; i >= 0; i--)
+		{
+			TrackerData.KillLogEntry kill = trackerData.killLog.get(i);
+			if (kill.killCount != null || !sourceName.equals(kill.source) || kill.occurredAt == null)
+			{
+				continue;
+			}
+			try
+			{
+				if (Duration.between(Instant.parse(kill.occurredAt), now).abs().compareTo(RECENT_LOOT_KC_MATCH_WINDOW) <= 0)
+				{
+					kill.killCount = exactKillCount;
+					return true;
+				}
+			}
+			catch (java.time.format.DateTimeParseException ignored)
+			{
+				// Older malformed timestamps cannot be safely attributed to this KC.
+			}
+		}
+		return false;
 	}
 
 	private void recordLoot(PendingLoot pending)
@@ -459,11 +646,30 @@ public class DailyPvmTrackerPlugin extends Plugin
 				ignored -> new TrackerData.LootItem(item.itemId, item.name));
 			aggregate.quantity += item.quantity;
 			aggregate.totalValue += item.value;
-			source.totalValue += item.value;
+			if (!data.isLootHidden(pending.source, item.itemId))
+			{
+				source.totalValue += item.value;
+			}
 		}
+		TrackerData.KillLogEntry kill = new TrackerData.KillLogEntry();
+		kill.id = UUID.randomUUID().toString();
+		kill.date = pending.date.toString();
+		kill.occurredAt = pending.occurredAt;
+		kill.source = pending.source;
+		kill.killCount = pending.killCount;
+		kill.kills = pending.drops;
+		for (CapturedItem item : pending.items)
+		{
+			kill.items.add(new TrackerData.KillLootItem(item.itemId, item.name, item.quantity, item.value));
+			if (!data.isLootHidden(pending.source, item.itemId))
+			{
+				kill.totalValue += item.value;
+			}
+		}
+		data.killLog.add(kill);
 		if (!pending.completionHandled)
 		{
-			killCountService.recordCompletion(data, pending.date, pending.source, null);
+			killCountService.recordLootCompletionIfMissing(data, pending.date, pending.source, source.drops);
 		}
 		saveAndRefresh(pending.accountHash);
 	}
@@ -520,6 +726,19 @@ public class DailyPvmTrackerPlugin extends Plugin
 				return;
 			}
 			if (TrackerDataEditor.deleteDayGp(data, date))
+			{
+				saveAndRefresh(accountHash);
+			}
+		});
+	}
+
+	private void setLootHidden(String boss, int itemId, boolean hidden)
+	{
+		long accountHash = activeAccount;
+		executeStorage(() ->
+		{
+			if (loadedAccount == accountHash && activeAccount == accountHash && data != null
+				&& TrackerDataEditor.setLootHidden(data, boss, itemId, hidden))
 			{
 				saveAndRefresh(accountHash);
 			}
@@ -604,6 +823,20 @@ public class DailyPvmTrackerPlugin extends Plugin
 			refreshPanel();
 		}
 		maybeUploadSnapshot(accountHash, false);
+	}
+
+	private void processHighAlch(long accountHash, HighAlchTracker.Confirmation confirmation)
+	{
+		if (loadedAccount != accountHash || activeAccount != accountHash || data == null)
+		{
+			return;
+		}
+		GeSaleMatcher.MatchResult match = GeSaleMatcher.match(data, confirmation.itemId, 1,
+			confirmation.value, GeSaleMatcher.ConfirmationMethod.HIGH_ALCHEMY);
+		if (match.quantity > 0)
+		{
+			saveAndRefresh(accountHash);
+		}
 	}
 
 	private void saveAndRefresh(long accountHash)
@@ -765,11 +998,13 @@ public class DailyPvmTrackerPlugin extends Plugin
 	private static final class RecentCompletion
 	{
 		private final String source;
+		private final Integer killCount;
 		private final int tick;
 
-		private RecentCompletion(String source, int tick)
+		private RecentCompletion(String source, Integer killCount, int tick)
 		{
 			this.source = source;
+			this.killCount = killCount;
 			this.tick = tick;
 		}
 	}
@@ -782,10 +1017,13 @@ public class DailyPvmTrackerPlugin extends Plugin
 		private final int drops;
 		private final List<CapturedItem> items;
 		private final int tick;
+		private Integer killCount;
+		private final String occurredAt;
 		private boolean completionHandled;
 
 		private PendingLoot(long accountHash, LocalDate date, String source, int drops,
-			List<CapturedItem> items, int tick, boolean completionHandled)
+			List<CapturedItem> items, int tick, boolean completionHandled, Integer killCount,
+			String occurredAt)
 		{
 			this.accountHash = accountHash;
 			this.date = date;
@@ -794,6 +1032,8 @@ public class DailyPvmTrackerPlugin extends Plugin
 			this.items = items;
 			this.tick = tick;
 			this.completionHandled = completionHandled;
+			this.killCount = killCount;
+			this.occurredAt = occurredAt;
 		}
 	}
 

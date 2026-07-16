@@ -15,6 +15,7 @@ final class DailySummary
 	final Map<String, Integer> startingKillCounts;
 	final Map<String, Integer> endingKillCounts;
 	final List<LootSummary> loot;
+	final List<RaidSummary> raids;
 	final int totalKills;
 	final int totalRecoveredKills;
 	final long trackedLootValue;
@@ -26,7 +27,8 @@ final class DailySummary
 	DailySummary(LocalDate date, LocalDate intervalEnd, boolean completed, Map<String, Integer> kills,
 		Map<String, Integer> recoveredKills,
 		Map<String, Integer> startingKillCounts, Map<String, Integer> endingKillCounts,
-		List<LootSummary> loot, int totalKills, int totalRecoveredKills, long trackedLootValue, long confirmedValue,
+		List<LootSummary> loot, List<RaidSummary> raids, int totalKills, int totalRecoveredKills,
+		long trackedLootValue, long confirmedValue,
 		Map<String, Long> manualAdjustments, long totalAdjustment, long totalValue)
 	{
 		this.date = date;
@@ -37,6 +39,7 @@ final class DailySummary
 		this.startingKillCounts = Collections.unmodifiableMap(startingKillCounts);
 		this.endingKillCounts = Collections.unmodifiableMap(endingKillCounts);
 		this.loot = Collections.unmodifiableList(loot);
+		this.raids = Collections.unmodifiableList(raids);
 		this.totalKills = totalKills;
 		this.totalRecoveredKills = totalRecoveredKills;
 		this.trackedLootValue = trackedLootValue;
@@ -49,6 +52,17 @@ final class DailySummary
 	LootSummary findLoot(String source)
 	{
 		return loot.stream().filter(entry -> entry.source.equals(source)).findFirst().orElse(null);
+	}
+
+	RaidSummary findRaid(String source)
+	{
+		return raids.stream().filter(entry -> entry.source.equals(source)).findFirst().orElse(null);
+	}
+
+	long bossExpectedUniqueValue(String source)
+	{
+		RaidSummary summary = findRaid(source);
+		return summary == null ? 0L : summary.expectedUniqueValue;
 	}
 
 	long bossTrackedValue(String source)
@@ -85,14 +99,51 @@ final class DailySummary
 		final long value;
 		final long confirmedValue;
 		final List<ItemSummary> items;
+		final List<ItemSummary> hiddenItems;
 
-		LootSummary(String source, int drops, long value, long confirmedValue, List<ItemSummary> items)
+		LootSummary(String source, int drops, long value, long confirmedValue, List<ItemSummary> items,
+			List<ItemSummary> hiddenItems)
 		{
 			this.source = source;
 			this.drops = drops;
 			this.value = value;
 			this.confirmedValue = confirmedValue;
 			this.items = Collections.unmodifiableList(items);
+			this.hiddenItems = Collections.unmodifiableList(hiddenItems);
+		}
+	}
+
+	static final class RaidSummary
+	{
+		final String source;
+		final int completions;
+		final long personalPoints;
+		final int pointRecords;
+		final long lootPoints;
+		final long teamPoints;
+		final int teamPointRecords;
+		final Integer minimumRaidLevel;
+		final Integer maximumRaidLevel;
+		final double totalUniqueChance;
+		final long expectedUniqueValue;
+		final String estimateBasis;
+
+		RaidSummary(String source, int completions, long personalPoints, int pointRecords, long lootPoints,
+			long teamPoints, int teamPointRecords, Integer minimumRaidLevel, Integer maximumRaidLevel,
+			double totalUniqueChance, long expectedUniqueValue, String estimateBasis)
+		{
+			this.source = source;
+			this.completions = completions;
+			this.personalPoints = personalPoints;
+			this.pointRecords = pointRecords;
+			this.lootPoints = lootPoints;
+			this.teamPoints = teamPoints;
+			this.teamPointRecords = teamPointRecords;
+			this.minimumRaidLevel = minimumRaidLevel;
+			this.maximumRaidLevel = maximumRaidLevel;
+			this.totalUniqueChance = totalUniqueChance;
+			this.expectedUniqueValue = expectedUniqueValue;
+			this.estimateBasis = estimateBasis;
 		}
 	}
 
@@ -104,8 +155,13 @@ final class DailySummary
 		final long value;
 		final long confirmedQuantity;
 		final long confirmedValue;
+		final long geConfirmedQuantity;
+		final long geConfirmedValue;
+		final long alchConfirmedQuantity;
+		final long alchConfirmedValue;
 
-		ItemSummary(int itemId, String name, long quantity, long value, long confirmedQuantity, long confirmedValue)
+		ItemSummary(int itemId, String name, long quantity, long value, long confirmedQuantity, long confirmedValue,
+			long geConfirmedQuantity, long geConfirmedValue, long alchConfirmedQuantity, long alchConfirmedValue)
 		{
 			this.itemId = itemId;
 			this.name = name;
@@ -113,6 +169,16 @@ final class DailySummary
 			this.value = value;
 			this.confirmedQuantity = confirmedQuantity;
 			this.confirmedValue = confirmedValue;
+			this.geConfirmedQuantity = geConfirmedQuantity;
+			this.geConfirmedValue = geConfirmedValue;
+			this.alchConfirmedQuantity = alchConfirmedQuantity;
+			this.alchConfirmedValue = alchConfirmedValue;
+		}
+
+		@Override
+		public String toString()
+		{
+			return name;
 		}
 	}
 }

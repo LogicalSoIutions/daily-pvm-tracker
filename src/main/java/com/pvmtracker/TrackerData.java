@@ -1,7 +1,11 @@
 package com.pvmtracker;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
+import java.util.List;
 
 final class TrackerData
 {
@@ -11,7 +15,21 @@ final class TrackerData
 	Map<String, Integer> lastKnownKillCounts = new LinkedHashMap<>();
 	Map<String, KcDay> kcDays = new LinkedHashMap<>();
 	Map<String, LootDay> lootDays = new LinkedHashMap<>();
+	Map<String, Set<Integer>> hiddenLootItems = new LinkedHashMap<>();
+	List<KillLogEntry> killLog = new ArrayList<>();
+	List<RaidCompletion> raidCompletions = new ArrayList<>();
 	Map<Integer, GeOffer> geOffers = new LinkedHashMap<>();
+
+	boolean isLootHidden(String source, int itemId)
+	{
+		Set<Integer> hidden = hiddenLootItems.get(source);
+		return hidden != null && hidden.contains(itemId);
+	}
+
+	Set<Integer> hiddenLootFor(String source)
+	{
+		return hiddenLootItems.computeIfAbsent(source, ignored -> new LinkedHashSet<>());
+	}
 
 	static final class KcDay
 	{
@@ -45,6 +63,10 @@ final class TrackerData
 		long totalValue;
 		long confirmedQuantity;
 		long confirmedValue;
+		long geConfirmedQuantity;
+		long geConfirmedValue;
+		long alchConfirmedQuantity;
+		long alchConfirmedValue;
 
 		LootItem()
 		{
@@ -79,5 +101,55 @@ final class TrackerData
 			this.spent = spent;
 			this.state = state;
 		}
+	}
+
+	static final class KillLogEntry
+	{
+		String id;
+		String date;
+		String occurredAt;
+		String source;
+		Integer killCount;
+		int kills = 1;
+		long totalValue;
+		List<KillLootItem> items = new ArrayList<>();
+	}
+
+	static final class KillLootItem
+	{
+		int itemId;
+		String name;
+		long quantity;
+		long totalValue;
+		long confirmedQuantity;
+		long confirmedValue;
+
+		KillLootItem()
+		{
+		}
+
+		KillLootItem(int itemId, String name, long quantity, long totalValue)
+		{
+			this.itemId = itemId;
+			this.name = name;
+			this.quantity = quantity;
+			this.totalValue = totalValue;
+		}
+	}
+
+	static final class RaidCompletion
+	{
+		String id;
+		String date;
+		String occurredAt;
+		String source;
+		Integer killCount;
+		Integer personalPoints;
+		Integer lootPoints;
+		Integer teamPoints;
+		Integer raidLevel;
+		double uniqueChance;
+		long expectedUniqueValue;
+		String estimateBasis;
 	}
 }

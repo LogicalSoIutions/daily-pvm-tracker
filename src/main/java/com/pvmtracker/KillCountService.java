@@ -48,6 +48,19 @@ final class KillCountService
 		return true;
 	}
 
+	boolean recordLootCompletionIfMissing(TrackerData data, LocalDate date, String boss, int lootDrops)
+	{
+		TrackerData.KcDay day = data.kcDays.get(date.toString());
+		int recordedKills = day == null ? 0 : day.kills.getOrDefault(boss, 0);
+		int recoveredKills = day == null ? 0 : day.recoveredKills.getOrDefault(boss, 0);
+		int observedKills = Math.max(0, recordedKills - recoveredKills);
+		if (observedKills >= lootDrops)
+		{
+			return false;
+		}
+		return recordCompletion(data, date, boss, null);
+	}
+
 	int reconcile(TrackerData data, LocalDate date, Map<String, Integer> hiscoreCounts)
 	{
 		if (data.lastKnownKillCounts.isEmpty())
