@@ -67,4 +67,49 @@ public class KillCountServiceTest
 		assertEquals(Integer.valueOf(2), day.endingKillCounts.get("Theatre of Blood: Entry Mode"));
 		assertEquals(Integer.valueOf(2), data.lastKnownKillCounts.get("Theatre of Blood: Entry Mode"));
 	}
+
+	@Test
+	public void exactChatCountCorrectsALootOnlyCounterThatDriftedAhead()
+	{
+		TrackerData data = new TrackerData();
+		data.lastKnownKillCounts.put("The Corrupted Gauntlet", 76);
+		for (int i = 1; i <= 24; i++)
+		{
+			assertTrue(service.recordLootCompletionIfMissing(data, date, "The Corrupted Gauntlet", i));
+		}
+
+		assertEquals(Integer.valueOf(100), data.lastKnownKillCounts.get("The Corrupted Gauntlet"));
+		assertTrue(service.recordCompletion(data, date, "The Corrupted Gauntlet", 99));
+
+		TrackerData.KcDay day = data.kcDays.get(date.toString());
+		assertEquals(Integer.valueOf(24), day.kills.get("The Corrupted Gauntlet"));
+		assertEquals(Integer.valueOf(75), day.startingKillCounts.get("The Corrupted Gauntlet"));
+		assertEquals(Integer.valueOf(99), day.endingKillCounts.get("The Corrupted Gauntlet"));
+		assertEquals(Integer.valueOf(99), data.lastKnownKillCounts.get("The Corrupted Gauntlet"));
+	}
+
+	@Test
+	public void hiscoresCorrectALootOnlyCounterThatDriftedAhead()
+	{
+		TrackerData data = new TrackerData();
+		data.lastKnownKillCounts.put("The Gauntlet", 1);
+		data.lastKnownKillCounts.put("The Corrupted Gauntlet", 76);
+		data.lastKnownKillCountsAt = date.toString();
+		for (int i = 1; i <= 24; i++)
+		{
+			assertTrue(service.recordLootCompletionIfMissing(data, date, "The Corrupted Gauntlet", i));
+		}
+
+		java.util.Map<String, Integer> hiscores = new java.util.LinkedHashMap<>();
+		hiscores.put("The Gauntlet", 1);
+		hiscores.put("The Corrupted Gauntlet", 99);
+		assertEquals(0, service.reconcile(data, date, hiscores));
+
+		TrackerData.KcDay day = data.kcDays.get(date.toString());
+		assertEquals(Integer.valueOf(24), day.kills.get("The Corrupted Gauntlet"));
+		assertEquals(Integer.valueOf(75), day.startingKillCounts.get("The Corrupted Gauntlet"));
+		assertEquals(Integer.valueOf(99), day.endingKillCounts.get("The Corrupted Gauntlet"));
+		assertEquals(Integer.valueOf(1), data.lastKnownKillCounts.get("The Gauntlet"));
+		assertEquals(Integer.valueOf(99), data.lastKnownKillCounts.get("The Corrupted Gauntlet"));
+	}
 }

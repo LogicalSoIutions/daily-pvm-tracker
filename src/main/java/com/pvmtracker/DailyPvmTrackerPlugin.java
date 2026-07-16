@@ -632,12 +632,14 @@ public class DailyPvmTrackerPlugin extends Plugin
 		{
 			return;
 		}
+		Integer previousKillCount = data.lastKnownKillCounts.get(sourceName);
 		boolean completionRecorded = killCountService.recordCompletion(data, date, sourceName, exactKillCount);
 		boolean changed = completionRecorded;
 		changed |= attachKillCountToRecentLoot(data, sourceName, exactKillCount);
 		if (changed)
 		{
-			if (raidCompletion != null && completionRecorded)
+			boolean isNewCompletion = previousKillCount == null || exactKillCount > previousKillCount;
+			if (raidCompletion != null && completionRecorded && isNewCompletion)
 			{
 				data.raidCompletions.add(raidCompletion);
 			}

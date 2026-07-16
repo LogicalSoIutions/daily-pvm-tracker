@@ -17,7 +17,12 @@ final class KillCountService
 		}
 		else
 		{
-			if (previous != null && exactKillCount <= previous)
+			if (previous != null && exactKillCount < previous)
+			{
+				correctAheadCount(data, date, boss, previous - exactKillCount, exactKillCount);
+				return true;
+			}
+			if (previous != null && exactKillCount.equals(previous))
 			{
 				return false;
 			}
@@ -46,6 +51,26 @@ final class KillCountService
 		}
 		data.lastKnownKillCountsAt = date.toString();
 		return true;
+	}
+
+	private void correctAheadCount(TrackerData data, LocalDate date, String boss, int correction, int exactKillCount)
+	{
+		TrackerData.KcDay day = data.kcDays.get(date.toString());
+		if (day != null)
+		{
+			Integer starting = day.startingKillCounts.get(boss);
+			Integer ending = day.endingKillCounts.get(boss);
+			if (starting != null)
+			{
+				day.startingKillCounts.put(boss, Math.max(0, starting - correction));
+			}
+			if (ending != null)
+			{
+				day.endingKillCounts.put(boss, Math.max(0, ending - correction));
+			}
+		}
+		data.lastKnownKillCounts.put(boss, exactKillCount);
+		data.lastKnownKillCountsAt = date.toString();
 	}
 
 	boolean recordLootCompletionIfMissing(TrackerData data, LocalDate date, String boss, int lootDrops)
@@ -84,7 +109,15 @@ final class KillCountService
 				data.lastKnownKillCounts.put(boss, remote);
 				continue;
 			}
-			if (remote <= local)
+			if (remote < local)
+			{
+				if (canCorrectSingleCountDrift(data, intervalStart, boss, local, remote))
+				{
+					correctAheadCount(data, intervalStart, boss, 1, remote);
+				}
+				continue;
+			}
+			if (remote == local)
 			{
 				continue;
 			}
@@ -107,5 +140,23 @@ final class KillCountService
 		}
 		data.lastKnownKillCountsAt = date.toString();
 		return recovered;
+	}
+
+	private boolean canCorrectSingleCountDrift(TrackerData data, LocalDate date, String boss, int local, int remote)
+	{
+		if (local - remote != 1)
+		{
+			return false;
+		}
+		TrackerData.KcDay day = data.kcDays.get(date.toString());
+		if (day == null)
+		{
+			return false;
+		}
+		Integer start = day.startingKillCounts.get(boss);
+		Integer end = day.endingKillCounts.get(boss);
+		int recorded = day.kills.getOrDefault(boss, 0);
+		int recovered = day.recoveredKills.getOrDefault(boss, 0);
+		return start != null && end != null && end == local && recorded - recovered == end - start;
 	}
 }
