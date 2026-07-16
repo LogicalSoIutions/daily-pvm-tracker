@@ -448,10 +448,6 @@ public class DailyPvmTrackerPlugin extends Plugin
 						cancelUpload();
 					}
 				}
-				if ("highAlchPricesOnly".equals(event.getKey()))
-				{
-					requestMissingBossValues(activeAccount);
-				}
 				refreshPanel();
 			});
 		}
