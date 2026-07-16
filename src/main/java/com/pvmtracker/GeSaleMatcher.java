@@ -30,6 +30,11 @@ final class GeSaleMatcher
 			return new MatchResult(0, 0);
 		}
 
+		if (method == ConfirmationMethod.GRAND_EXCHANGE)
+		{
+			proceeds = GrandExchangeTax.netProceeds(confirmedQuantity, proceeds);
+		}
+
 		List<Lot> lots = new ArrayList<>();
 		data.lootDays.entrySet().stream()
 			.sorted(Map.Entry.comparingByKey())

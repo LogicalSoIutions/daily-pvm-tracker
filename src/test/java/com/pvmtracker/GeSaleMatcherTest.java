@@ -18,17 +18,17 @@ public class GeSaleMatcherTest
 		GeSaleMatcher.MatchResult match = GeSaleMatcher.match(data, 4151, 4, 4_000_000L);
 
 		assertEquals(4, match.quantity);
-		assertEquals(4_000_000L, match.value);
+		assertEquals(3_920_000L, match.value);
 		assertEquals(2, oldLoot.confirmedQuantity);
-		assertEquals(2_000_000L, oldLoot.confirmedValue);
+		assertEquals(1_960_000L, oldLoot.confirmedValue);
 		assertEquals(2, oldLoot.geConfirmedQuantity);
-		assertEquals(2_000_000L, oldLoot.geConfirmedValue);
+		assertEquals(1_960_000L, oldLoot.geConfirmedValue);
 		assertEquals(2, newLoot.confirmedQuantity);
-		assertEquals(2_000_000L, newLoot.confirmedValue);
+		assertEquals(1_960_000L, newLoot.confirmedValue);
 		assertEquals(2, oldKillLoot.confirmedQuantity);
-		assertEquals(2_000_000L, oldKillLoot.confirmedValue);
+		assertEquals(1_960_000L, oldKillLoot.confirmedValue);
 		assertEquals(2, newKillLoot.confirmedQuantity);
-		assertEquals(2_000_000L, newKillLoot.confirmedValue);
+		assertEquals(1_960_000L, newKillLoot.confirmedValue);
 	}
 
 	@Test
@@ -56,9 +56,9 @@ public class GeSaleMatcherTest
 		GeSaleMatcher.MatchResult match = GeSaleMatcher.match(data, 11286, 4, 8_000_000L);
 
 		assertEquals(1, match.quantity);
-		assertEquals(2_000_000L, match.value);
+		assertEquals(1_960_000L, match.value);
 		assertEquals(1, loot.confirmedQuantity);
-		assertEquals(2_000_000L, loot.confirmedValue);
+		assertEquals(1_960_000L, loot.confirmedValue);
 	}
 
 	@Test
@@ -73,7 +73,30 @@ public class GeSaleMatcherTest
 		assertEquals(0, duplicate.quantity);
 		assertEquals(0, duplicate.value);
 		assertEquals(1, loot.confirmedQuantity);
-		assertEquals(2_000_000L, loot.confirmedValue);
+		assertEquals(1_960_000L, loot.confirmedValue);
+	}
+
+	@Test
+	public void recordsActualCoinsAfterGrandExchangeTax()
+	{
+		TrackerData data = new TrackerData();
+		TrackerData.LootItem loot = addLoot(data, "2026-07-10", "Vorkath", 1619, 13);
+
+		GeSaleMatcher.MatchResult match = GeSaleMatcher.match(data, 1619, 13, 14_976L);
+
+		assertEquals(13, match.quantity);
+		assertEquals(14_677L, match.value);
+		assertEquals(14_677L, loot.confirmedValue);
+		assertEquals(14_677L, loot.geConfirmedValue);
+	}
+
+	@Test
+	public void roundsTaxDownPerItemAndCapsIt()
+	{
+		assertEquals(49L, GrandExchangeTax.netProceeds(1, 49L));
+		assertEquals(49L, GrandExchangeTax.netProceeds(1, 50L));
+		assertEquals(245_000_000L, GrandExchangeTax.netProceeds(1, 250_000_000L));
+		assertEquals(295_000_000L, GrandExchangeTax.netProceeds(1, 300_000_000L));
 	}
 
 	private static TrackerData.LootItem addLoot(TrackerData data, String date, String boss, int itemId, long quantity)

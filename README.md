@@ -66,6 +66,8 @@ There are two ways to view tracker data on the website:
 Estimated GP is the Grand Exchange value when loot is captured, plus any manually entered split.
 Confirmed GP is stricter: it is added when RuneLite observes either a Grand Exchange sell fill or a
 successful High Level Alchemy cast for an outstanding item previously captured from a boss or raid.
+Grand Exchange confirmations use the coins actually collected after the 2% per-item tax, including
+the game's round-down behavior and 5 million coin tax cap per item.
 The confirmation method and its quantity/value are retained per item. Sell-slot progress is stored per character,
 so partial or completed sales observed after a later login are matched back to the original loot day.
 Matching uses oldest outstanding loot first and never confirms more units than the tracker recorded.
