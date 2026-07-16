@@ -58,6 +58,8 @@ final class DailyPvmTrackerPanel extends PluginPanel
 	private static final Color ACCENT = new Color(246, 194, 76);
 	private static final Color ERROR = new Color(225, 90, 90);
 	private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("EEE, MMM d");
+	private static final String ESTIMATED_GP_TOOLTIP = "Estimated GP values captured loot at current Grand Exchange prices, or High Alchemy prices when Use HA prices only is enabled. Items do not need to be sold.";
+	private static final String CONFIRMED_GP_TOOLTIP = "Confirmed GP is the actual value realized from captured loot the plugin has matched to completed Grand Exchange sales (after tax) or High Alchemy. It also includes item values and splits you entered manually; unsold loot is not included.";
 
 	private final Actions actions;
 	private final CardLayout pages = new CardLayout();
@@ -191,6 +193,22 @@ final class DailyPvmTrackerPanel extends PluginPanel
 		content.add(export);
 		content.add(Box.createVerticalStrut(13));
 
+		JPanel about = new JPanel();
+		about.setLayout(new BoxLayout(about, BoxLayout.Y_AXIS));
+		about.setBackground(SURFACE);
+		about.setBorder(BorderFactory.createEmptyBorder(11, 11, 11, 11));
+		about.setName("pvm-hub-info");
+		JLabel aboutTitle = label("How PvM Hub works", 11, TEXT);
+		aboutTitle.setFont(aboutTitle.getFont().deriveFont(Font.BOLD));
+		about.add(aboutTitle);
+		about.add(Box.createVerticalStrut(4));
+		JTextArea aboutText = wrappedText("Your boss kills, loot, and GP are tracked locally on this computer. Save a private file above, or enable Upload to PvM-Hub.com in the plugin settings to keep your web profile updated automatically.", 9, MUTED, 5);
+		aboutText.setName("pvm-hub-info-text");
+		about.add(aboutText);
+		fillWidth(about);
+		content.add(about);
+		content.add(Box.createVerticalStrut(13));
+
 		JLabel recent = sectionLabel("Recent activity");
 		recent.setBorder(BorderFactory.createEmptyBorder(0, 2, 6, 0));
 		content.add(recent);
@@ -291,8 +309,12 @@ final class DailyPvmTrackerPanel extends PluginPanel
 
 		JPanel right = transparentVerticalPanel();
 		JLabel estimated = label("Est. " + formatGp(summary.totalValue), 10, TEXT);
+		estimated.setToolTipText(ESTIMATED_GP_TOOLTIP);
+		estimated.setName("estimated-gp");
 		estimated.setHorizontalAlignment(SwingConstants.RIGHT);
 		JLabel confirmed = label("Confirmed " + formatGp(summary.confirmedValue), 10, VALUE);
+		confirmed.setToolTipText(CONFIRMED_GP_TOOLTIP);
+		confirmed.setName("confirmed-gp");
 		confirmed.setFont(confirmed.getFont().deriveFont(Font.BOLD));
 		confirmed.setHorizontalAlignment(SwingConstants.RIGHT);
 		right.add(estimated);
@@ -401,8 +423,10 @@ final class DailyPvmTrackerPanel extends PluginPanel
 		left.add(label(summary.intervalDays() > 1 ? summary.intervalDays() + " day recovered interval" : "Calendar day", 9, MUTED));
 		JPanel right = transparentVerticalPanel();
 		JLabel estimated = label("Est. " + formatGp(summary.totalValue), 10, TEXT);
+		estimated.setToolTipText(ESTIMATED_GP_TOOLTIP);
 		estimated.setHorizontalAlignment(SwingConstants.RIGHT);
 		JLabel confirmed = label("Confirmed " + formatGp(summary.confirmedValue), 10, VALUE);
+		confirmed.setToolTipText(CONFIRMED_GP_TOOLTIP);
 		confirmed.setFont(confirmed.getFont().deriveFont(Font.BOLD));
 		confirmed.setHorizontalAlignment(SwingConstants.RIGHT);
 		right.add(estimated);
@@ -431,8 +455,10 @@ final class DailyPvmTrackerPanel extends PluginPanel
 		long value = summary.bossTrackedValue(boss) + summary.bossAdjustment(boss);
 		JPanel amounts = transparentVerticalPanel();
 		JLabel amount = label("Est. " + formatGp(value) + "  ›", 9, value == 0 ? MUTED : TEXT);
+		amount.setToolTipText(ESTIMATED_GP_TOOLTIP);
 		amount.setHorizontalAlignment(SwingConstants.RIGHT);
 		JLabel confirmed = label("Conf. " + formatGp(summary.bossConfirmedValue(boss)), 9, VALUE);
+		confirmed.setToolTipText(CONFIRMED_GP_TOOLTIP);
 		confirmed.setHorizontalAlignment(SwingConstants.RIGHT);
 		amounts.add(amount);
 		amounts.add(Box.createVerticalStrut(2));
@@ -447,6 +473,7 @@ final class DailyPvmTrackerPanel extends PluginPanel
 		}
 		row.add(left, BorderLayout.CENTER);
 		row.add(amounts, BorderLayout.EAST);
+		row.setName("boss-row");
 		row.onClick(() -> showBoss(summary, boss));
 		fillWidth(row);
 		return row;
@@ -550,6 +577,13 @@ final class DailyPvmTrackerPanel extends PluginPanel
 				detail.add(itemRow(summary.date, boss, item.quantity + " × " + item.name,
 					"Est. " + formatGp(item.value) + " · Conf. " + formatGp(item.confirmedValue), methods,
 					item));
+			}
+			if (!loot.items.isEmpty())
+			{
+				detail.add(Box.createVerticalStrut(5));
+				JLabel contextMenuTip = label("Tip: Right-click an item for more options.", 9, MUTED);
+				contextMenuTip.setName("loot-context-menu-tip");
+				detail.add(contextMenuTip);
 			}
 			if (!loot.hiddenItems.isEmpty())
 			{
@@ -717,8 +751,14 @@ final class DailyPvmTrackerPanel extends PluginPanel
 		row.setBorder(BorderFactory.createCompoundBorder(
 			BorderFactory.createMatteBorder(0, 0, 1, 0, ColorScheme.BORDER_COLOR),
 			BorderFactory.createEmptyBorder(9, 10, 9, 10)));
-		row.add(label(name, 10, MUTED), BorderLayout.CENTER);
+		JLabel metricName = label(name, 10, MUTED);
 		JLabel amount = label(value, 10, valueColor);
+		String tooltip = name.startsWith("Estimated") ? ESTIMATED_GP_TOOLTIP
+			: name.startsWith("Confirmed") ? CONFIRMED_GP_TOOLTIP : null;
+		metricName.setToolTipText(tooltip);
+		amount.setToolTipText(tooltip);
+		row.setToolTipText(tooltip);
+		row.add(metricName, BorderLayout.CENTER);
 		amount.setFont(amount.getFont().deriveFont(Font.BOLD));
 		row.add(amount, BorderLayout.EAST);
 		fillWidth(row);
@@ -734,10 +774,8 @@ final class DailyPvmTrackerPanel extends PluginPanel
 		row.add(label(name, 9, TEXT));
 		row.add(Box.createVerticalStrut(2));
 		JLabel amount = label(value, 9, MUTED);
-		if (!methods.isEmpty())
-		{
-			amount.setToolTipText(methods);
-		}
+		amount.setToolTipText("<html>Estimated: current GE prices, or HA prices when Use HA prices only is enabled. Items do not need to be sold.<br>Confirmed: actual matched GE proceeds after tax or HA value. Unsold items are excluded unless you enter a value manually."
+			+ (methods.isEmpty() ? "" : "<br>Breakdown: " + methods) + "</html>");
 		row.add(amount);
 		JPopupMenu menu = new JPopupMenu();
 		JMenuItem kept = new JMenuItem(item.kept ? "Mark as not kept" : "Mark as kept");

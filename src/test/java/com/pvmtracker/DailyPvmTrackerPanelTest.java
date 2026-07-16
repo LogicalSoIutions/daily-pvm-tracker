@@ -87,6 +87,48 @@ public class DailyPvmTrackerPanelTest
 	}
 
 	@Test
+	public void overviewExplainsLocalAndAutomaticPvmHubOptions() throws Exception
+	{
+		SwingUtilities.invokeAndWait(() ->
+		{
+			DailyPvmTrackerPanel panel = new DailyPvmTrackerPanel();
+			Component info = findByName(panel, "pvm-hub-info");
+			assertNotNull(info);
+			JTextArea infoText = (JTextArea) findByName((Container) info, "pvm-hub-info-text");
+			assertNotNull(infoText);
+			String text = infoText.getText();
+			org.junit.Assert.assertTrue(text.contains("tracked locally"));
+			org.junit.Assert.assertTrue(text.contains("plugin settings"));
+			org.junit.Assert.assertTrue(text.contains("Upload to PvM-Hub.com"));
+		});
+	}
+
+	@Test
+	public void estimatedAndConfirmedGpExplainTheirSourcesOnHover() throws Exception
+	{
+		SwingUtilities.invokeAndWait(() ->
+		{
+			LocalDate date = LocalDate.parse("2026-07-15");
+			TrackerData data = new TrackerData();
+			data.lootDays.put(date.toString(), new TrackerData.LootDay());
+			DailySummary summary = new DailySummaryService().build(data, date, true).get(0);
+			DailyPvmTrackerPanel panel = new DailyPvmTrackerPanel();
+			panel.update("Logical", "Tracking locally.", java.util.Collections.singletonList(summary));
+
+			JComponent estimated = (JComponent) findByName(panel, "estimated-gp");
+			JComponent confirmed = (JComponent) findByName(panel, "confirmed-gp");
+			assertNotNull(estimated);
+			assertNotNull(confirmed);
+			org.junit.Assert.assertTrue(estimated.getToolTipText().contains("Grand Exchange prices"));
+			org.junit.Assert.assertTrue(estimated.getToolTipText().contains("Use HA prices only"));
+			org.junit.Assert.assertTrue(confirmed.getToolTipText().contains("Grand Exchange sales"));
+			org.junit.Assert.assertTrue(confirmed.getToolTipText().contains("after tax"));
+			org.junit.Assert.assertTrue(confirmed.getToolTipText().contains("unsold loot is not included"));
+			org.junit.Assert.assertTrue(confirmed.getToolTipText().contains("splits"));
+		});
+	}
+
+	@Test
 	public void detailControlsUseOneLeftAlignmentContract() throws Exception
 	{
 		SwingUtilities.invokeAndWait(() ->
@@ -120,6 +162,43 @@ public class DailyPvmTrackerPanelTest
 			JComponent splitPicker = (JComponent) findByName(panel, "split-picker");
 			assertEquals(Integer.MAX_VALUE, splitPicker.getMaximumSize().width);
 		});
+	}
+
+	@Test
+	public void bossViewHintsAtTheLootContextMenu() throws Exception
+	{
+		SwingUtilities.invokeAndWait(() ->
+		{
+			LocalDate date = LocalDate.parse("2026-07-15");
+			TrackerData data = new TrackerData();
+			TrackerData.LootDay day = new TrackerData.LootDay();
+			TrackerData.LootSource source = new TrackerData.LootSource();
+			TrackerData.LootItem item = new TrackerData.LootItem(1, "Valuable drop");
+			item.quantity = 1;
+			item.totalValue = 1_000_000L;
+			source.items.put(item.itemId, item);
+			day.sources.put("Maggot King", source);
+			data.lootDays.put(date.toString(), day);
+			DailySummary summary = new DailySummaryService().build(data, date, true).get(0);
+
+			DailyPvmTrackerPanel panel = new DailyPvmTrackerPanel();
+			panel.update("Logical", "Tracking locally.", java.util.Collections.singletonList(summary));
+			click(findByName(panel, "day-card"));
+			click(findByName(panel, "boss-row"));
+
+			Component tip = findByName(panel, "loot-context-menu-tip");
+			assertNotNull(tip);
+			assertEquals("Tip: Right-click an item for more options.", ((javax.swing.JLabel) tip).getText());
+		});
+	}
+
+	private static void click(Component component)
+	{
+		assertNotNull(component);
+		for (MouseListener listener : component.getMouseListeners())
+		{
+			listener.mouseClicked(new MouseEvent(component, MouseEvent.MOUSE_CLICKED, 0L, 0, 1, 1, 1, false));
+		}
 	}
 
 	private static List<JScrollPane> findScrollPanes(Container root)
