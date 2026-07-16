@@ -67,6 +67,8 @@ final class TrackerData
 		long geConfirmedValue;
 		long alchConfirmedQuantity;
 		long alchConfirmedValue;
+		boolean kept;
+		Long confirmedValueOverride;
 
 		LootItem()
 		{

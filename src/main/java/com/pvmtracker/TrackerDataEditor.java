@@ -70,6 +70,32 @@ final class TrackerDataEditor
 		return changed;
 	}
 
+	static boolean setLootKept(TrackerData data, LocalDate date, String boss, int itemId, boolean kept)
+	{
+		TrackerData.LootDay day = data.lootDays.get(date.toString());
+		TrackerData.LootSource source = day == null ? null : day.sources.get(boss);
+		TrackerData.LootItem item = source == null ? null : source.items.get(itemId);
+		if (item == null || item.kept == kept)
+		{
+			return false;
+		}
+		item.kept = kept;
+		return true;
+	}
+
+	static boolean setConfirmedValueOverride(TrackerData data, LocalDate date, String boss, int itemId, Long value)
+	{
+		TrackerData.LootDay day = data.lootDays.get(date.toString());
+		TrackerData.LootSource source = day == null ? null : day.sources.get(boss);
+		TrackerData.LootItem item = source == null ? null : source.items.get(itemId);
+		if (item == null || java.util.Objects.equals(item.confirmedValueOverride, value))
+		{
+			return false;
+		}
+		item.confirmedValueOverride = value;
+		return true;
+	}
+
 	static void recalculateAllSourceTotals(TrackerData data)
 	{
 		for (TrackerData.LootDay day : data.lootDays.values())

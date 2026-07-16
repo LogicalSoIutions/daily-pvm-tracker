@@ -72,6 +72,23 @@ public class TrackerDataEditorTest
 		assertFalse(data.hiddenLootItems.containsKey("Nex"));
 	}
 
+	@Test
+	public void persistsKeptAndConfirmedValueOverrideForOneLootItem()
+	{
+		TrackerData data = new TrackerData();
+		TrackerData.LootDay day = new TrackerData.LootDay();
+		TrackerData.LootSource source = sourceWithItem(100, 600_000_000L);
+		day.sources.put("Nex", source);
+		data.lootDays.put(DATE.toString(), day);
+
+		assertTrue(TrackerDataEditor.setLootKept(data, DATE, "Nex", 100, true));
+		assertTrue(source.items.get(100).kept);
+		assertTrue(TrackerDataEditor.setConfirmedValueOverride(data, DATE, "Nex", 100, 200_000_000L));
+		assertEquals(Long.valueOf(200_000_000L), source.items.get(100).confirmedValueOverride);
+		assertTrue(TrackerDataEditor.setConfirmedValueOverride(data, DATE, "Nex", 100, null));
+		assertEquals(null, source.items.get(100).confirmedValueOverride);
+	}
+
 	private static TrackerData.LootSource sourceWithItem(int itemId, long value)
 	{
 		TrackerData.LootSource source = new TrackerData.LootSource();

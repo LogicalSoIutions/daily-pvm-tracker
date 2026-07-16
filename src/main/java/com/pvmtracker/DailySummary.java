@@ -159,9 +159,12 @@ final class DailySummary
 		final long geConfirmedValue;
 		final long alchConfirmedQuantity;
 		final long alchConfirmedValue;
+		final boolean kept;
+		final Long confirmedValueOverride;
 
 		ItemSummary(int itemId, String name, long quantity, long value, long confirmedQuantity, long confirmedValue,
-			long geConfirmedQuantity, long geConfirmedValue, long alchConfirmedQuantity, long alchConfirmedValue)
+			long geConfirmedQuantity, long geConfirmedValue, long alchConfirmedQuantity, long alchConfirmedValue,
+			boolean kept, Long confirmedValueOverride)
 		{
 			this.itemId = itemId;
 			this.name = name;
@@ -173,6 +176,8 @@ final class DailySummary
 			this.geConfirmedValue = geConfirmedValue;
 			this.alchConfirmedQuantity = alchConfirmedQuantity;
 			this.alchConfirmedValue = alchConfirmedValue;
+			this.kept = kept;
+			this.confirmedValueOverride = confirmedValueOverride;
 		}
 
 		@Override

@@ -158,6 +158,18 @@ public class DailyPvmTrackerPlugin extends Plugin
 			}
 
 			@Override
+			public void setLootKept(LocalDate date, String boss, int itemId, boolean kept)
+			{
+				DailyPvmTrackerPlugin.this.setLootKept(date, boss, itemId, kept);
+			}
+
+			@Override
+			public void setConfirmedValueOverride(LocalDate date, String boss, int itemId, Long value)
+			{
+				DailyPvmTrackerPlugin.this.setConfirmedValueOverride(date, boss, itemId, value);
+			}
+
+			@Override
 			public void saveData(Path destination)
 			{
 				DailyPvmTrackerPlugin.this.saveData(destination);
@@ -435,6 +447,10 @@ public class DailyPvmTrackerPlugin extends Plugin
 					{
 						cancelUpload();
 					}
+				}
+				if ("highAlchPricesOnly".equals(event.getKey()))
+				{
+					requestMissingBossValues(activeAccount);
 				}
 				refreshPanel();
 			});
@@ -739,6 +755,32 @@ public class DailyPvmTrackerPlugin extends Plugin
 		{
 			if (loadedAccount == accountHash && activeAccount == accountHash && data != null
 				&& TrackerDataEditor.setLootHidden(data, boss, itemId, hidden))
+			{
+				saveAndRefresh(accountHash);
+			}
+		});
+	}
+
+	private void setLootKept(LocalDate date, String boss, int itemId, boolean kept)
+	{
+		long accountHash = activeAccount;
+		executeStorage(() ->
+		{
+			if (loadedAccount == accountHash && activeAccount == accountHash && data != null
+				&& TrackerDataEditor.setLootKept(data, date, boss, itemId, kept))
+			{
+				saveAndRefresh(accountHash);
+			}
+		});
+	}
+
+	private void setConfirmedValueOverride(LocalDate date, String boss, int itemId, Long value)
+	{
+		long accountHash = activeAccount;
+		executeStorage(() ->
+		{
+			if (loadedAccount == accountHash && activeAccount == accountHash && data != null
+				&& TrackerDataEditor.setConfirmedValueOverride(data, date, boss, itemId, value))
 			{
 				saveAndRefresh(accountHash);
 			}

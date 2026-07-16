@@ -115,16 +115,12 @@ final class DailySummaryService
 				List<DailySummary.ItemSummary> items = source.items.values().stream()
 					.filter(item -> !data.isLootHidden(entry.getKey(), item.itemId))
 					.sorted(Comparator.comparingLong((TrackerData.LootItem item) -> item.totalValue).reversed())
-					.map(item -> new DailySummary.ItemSummary(item.itemId, item.name, item.quantity, item.totalValue,
-						item.confirmedQuantity, item.confirmedValue, item.geConfirmedQuantity,
-						item.geConfirmedValue, item.alchConfirmedQuantity, item.alchConfirmedValue))
+					.map(item -> itemSummary(item))
 					.collect(Collectors.toList());
 				List<DailySummary.ItemSummary> hiddenItems = source.items.values().stream()
 					.filter(item -> data.isLootHidden(entry.getKey(), item.itemId))
 					.sorted(Comparator.comparing((TrackerData.LootItem item) -> item.name))
-					.map(item -> new DailySummary.ItemSummary(item.itemId, item.name, item.quantity, item.totalValue,
-						item.confirmedQuantity, item.confirmedValue, item.geConfirmedQuantity,
-						item.geConfirmedValue, item.alchConfirmedQuantity, item.alchConfirmedValue))
+					.map(item -> itemSummary(item))
 					.collect(Collectors.toList());
 				long confirmedValue = items.stream().mapToLong(item -> item.confirmedValue).sum();
 				return new DailySummary.LootSummary(entry.getKey(), source.drops, source.totalValue,
@@ -132,6 +128,14 @@ final class DailySummaryService
 			})
 			.sorted(Comparator.comparingLong((DailySummary.LootSummary source) -> source.value).reversed())
 			.collect(Collectors.toList());
+	}
+
+	private DailySummary.ItemSummary itemSummary(TrackerData.LootItem item)
+	{
+		long confirmedValue = item.confirmedValueOverride == null ? item.confirmedValue : item.confirmedValueOverride;
+		return new DailySummary.ItemSummary(item.itemId, item.name, item.quantity, item.totalValue,
+			item.confirmedQuantity, confirmedValue, item.geConfirmedQuantity, item.geConfirmedValue,
+			item.alchConfirmedQuantity, item.alchConfirmedValue, item.kept, item.confirmedValueOverride);
 	}
 
 	private static final class RaidAccumulator

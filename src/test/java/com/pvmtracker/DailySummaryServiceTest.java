@@ -129,6 +129,33 @@ public class DailySummaryServiceTest
 	}
 
 	@Test
+	public void countsKeptLootAndUsesConfirmedValueOverride()
+	{
+		TrackerData data = new TrackerData();
+		LocalDate today = LocalDate.parse("2026-07-15");
+		TrackerData.LootDay day = new TrackerData.LootDay();
+		TrackerData.LootSource source = new TrackerData.LootSource();
+		TrackerData.LootItem kept = new TrackerData.LootItem(1, "Kept item");
+		kept.quantity = 1;
+		kept.totalValue = 600_000_000L;
+		kept.kept = true;
+		TrackerData.LootItem split = new TrackerData.LootItem(2, "Split item");
+		split.quantity = 1;
+		split.totalValue = 600_000_000L;
+		split.confirmedValue = 600_000_000L;
+		split.confirmedValueOverride = 200_000_000L;
+		source.items.put(1, kept);
+		source.items.put(2, split);
+		source.totalValue = 1_200_000_000L;
+		day.sources.put("Nex", source);
+		data.lootDays.put(today.toString(), day);
+
+		DailySummary summary = summaryService.build(data, today, true).get(0);
+		assertEquals(200_000_000L, summary.confirmedValue);
+		assertEquals(200_000_000L, summary.findLoot("Nex").items.get(1).confirmedValue);
+	}
+
+	@Test
 	public void summarizesRaidPointsAndExpectedUniqueValueByDay()
 	{
 		TrackerData data = new TrackerData();

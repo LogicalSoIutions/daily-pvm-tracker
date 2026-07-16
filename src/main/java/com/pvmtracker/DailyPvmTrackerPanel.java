@@ -101,6 +101,16 @@ final class DailyPvmTrackerPanel extends PluginPanel
 			{
 			}
 
+			@Override
+			public void setLootKept(LocalDate date, String boss, int itemId, boolean kept)
+			{
+			}
+
+			@Override
+			public void setConfirmedValueOverride(LocalDate date, String boss, int itemId, Long value)
+			{
+			}
+
 		});
 	}
 
@@ -520,7 +530,9 @@ final class DailyPvmTrackerPanel extends PluginPanel
 		detail.add(sectionLabel("GP breakdown"));
 		detail.add(Box.createVerticalStrut(6));
 		detail.add(metricRow("Estimated loot", formatGp(tracked), TEXT));
+		long keptValue = lootKeptValue(summary.findLoot(boss));
 		detail.add(metricRow("Confirmed returns", formatGp(summary.bossConfirmedSaleValue(boss)), VALUE));
+		detail.add(metricRow("Kept value", formatGp(keptValue), keptValue == 0 ? MUTED : VALUE));
 		detail.add(metricRow("Confirmed split", formatSignedGp(adjustment), adjustment == 0 ? MUTED : VALUE));
 		detail.add(metricRow("Estimated total", formatGp(tracked + adjustment), TEXT));
 		detail.add(metricRow("Confirmed total", formatGp(summary.bossConfirmedValue(boss)), VALUE));
@@ -535,9 +547,9 @@ final class DailyPvmTrackerPanel extends PluginPanel
 			{
 				String methods = item.confirmedValue == 0 ? ""
 					: "GE " + formatGp(item.geConfirmedValue) + " · HA " + formatGp(item.alchConfirmedValue);
-				detail.add(itemRow(item.quantity + " × " + item.name,
+				detail.add(itemRow(summary.date, boss, item.quantity + " × " + item.name,
 					"Est. " + formatGp(item.value) + " · Conf. " + formatGp(item.confirmedValue), methods,
-					() -> actions.setLootHidden(boss, item.itemId, true)));
+					item));
 			}
 			if (!loot.hiddenItems.isEmpty())
 			{
@@ -713,7 +725,7 @@ final class DailyPvmTrackerPanel extends PluginPanel
 		return row;
 	}
 
-	private JPanel itemRow(String name, String value, String methods, Runnable hideAction)
+	private JPanel itemRow(LocalDate date, String boss, String name, String value, String methods, DailySummary.ItemSummary item)
 	{
 		JPanel row = new JPanel();
 		row.setLayout(new BoxLayout(row, BoxLayout.Y_AXIS));
@@ -728,13 +740,51 @@ final class DailyPvmTrackerPanel extends PluginPanel
 		}
 		row.add(amount);
 		JPopupMenu menu = new JPopupMenu();
+		JMenuItem kept = new JMenuItem(item.kept ? "Mark as not kept" : "Mark as kept");
+		kept.addActionListener(event -> actions.setLootKept(date, boss, item.itemId, !item.kept));
+		menu.add(kept);
+		JMenuItem editConfirmed = new JMenuItem("Edit confirmed value");
+		editConfirmed.addActionListener(event -> editConfirmedValue(date, boss, item));
+		menu.add(editConfirmed);
+		if (item.confirmedValueOverride != null)
+		{
+			JMenuItem clearConfirmed = new JMenuItem("Use recorded GE/alch value");
+			clearConfirmed.addActionListener(event -> actions.setConfirmedValueOverride(date, boss, item.itemId, null));
+			menu.add(clearConfirmed);
+		}
 		JMenuItem hide = new JMenuItem("Hide this item for this boss");
-		hide.addActionListener(event -> hideAction.run());
+		hide.addActionListener(event -> actions.setLootHidden(boss, item.itemId, true));
 		menu.add(hide);
 		addPopupListenerRecursively(row, menu);
 		row.setName("loot-item-row");
 		fillWidth(row);
 		return row;
+	}
+
+	private void editConfirmedValue(LocalDate date, String boss, DailySummary.ItemSummary item)
+	{
+		String current = item.confirmedValueOverride == null ? Long.toString(item.confirmedValue)
+			: Long.toString(item.confirmedValueOverride);
+		String entered = JOptionPane.showInputDialog(this, "Confirmed value for " + item.name + " (for example, 200m):",
+			current);
+		if (entered == null)
+		{
+			return;
+		}
+		try
+		{
+			actions.setConfirmedValueOverride(date, boss, item.itemId, parseGp(entered));
+		}
+		catch (IllegalArgumentException ex)
+		{
+			JOptionPane.showMessageDialog(this, "Enter GP like 1250000, 1.25m, or 750k.", "Invalid GP value",
+				JOptionPane.ERROR_MESSAGE);
+		}
+	}
+
+	private static long lootKeptValue(DailySummary.LootSummary loot)
+	{
+		return loot == null ? 0L : loot.items.stream().filter(item -> item.kept).mapToLong(item -> item.value).sum();
 	}
 
 	private JButton hiddenLootButton(String boss, List<DailySummary.ItemSummary> hiddenItems)
@@ -928,6 +978,10 @@ final class DailyPvmTrackerPanel extends PluginPanel
 		void deleteDayGp(LocalDate date);
 
 		void setLootHidden(String boss, int itemId, boolean hidden);
+
+		void setLootKept(LocalDate date, String boss, int itemId, boolean kept);
+
+		void setConfirmedValueOverride(LocalDate date, String boss, int itemId, Long value);
 
 		void saveData(Path destination);
 
