@@ -21,6 +21,13 @@ final class RaidLootMatcher
 			|| source.startsWith("Tombs of Amascut"));
 	}
 
+	static boolean isGenericRaidSource(String source)
+	{
+		return "Chambers of Xeric".equals(source)
+			|| "Theatre of Blood".equals(source)
+			|| "Tombs of Amascut".equals(source);
+	}
+
 	static boolean isNonRewardLoot(String source, int itemCount, int onlyItemId)
 	{
 		return source != null && source.startsWith("Theatre of Blood")
@@ -45,7 +52,7 @@ final class RaidLootMatcher
 	static String resolveSource(String lootSource, String lootOccurredAt,
 		List<TrackerData.RaidCompletion> completions)
 	{
-		if (!isRaid(lootSource) || lootOccurredAt == null)
+		if (!isGenericRaidSource(lootSource) || lootOccurredAt == null)
 		{
 			return lootSource;
 		}

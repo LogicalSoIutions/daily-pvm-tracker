@@ -64,6 +64,38 @@ public class RaidLootMatcherTest
 	}
 
 	@Test
+	public void attributesOnlyGenericRaidSourcesToNearbyVariants()
+	{
+		TrackerData.RaidCompletion challengeCompletion = completion(
+			"Chambers of Xeric: Challenge Mode", "2026-07-17T06:25:41Z");
+		TrackerData.RaidCompletion entryCompletion = completion(
+			"Theatre of Blood: Entry Mode", "2026-07-17T06:25:41Z");
+
+		assertEquals("Chambers of Xeric: Challenge Mode", RaidLootMatcher.resolveSource(
+			"Chambers of Xeric", "2026-07-17T06:26:02Z", Collections.singletonList(challengeCompletion)));
+		assertEquals("Theatre of Blood: Entry Mode", RaidLootMatcher.resolveSource(
+			"Theatre of Blood", "2026-07-17T06:26:02Z", Collections.singletonList(entryCompletion)));
+	}
+
+	@Test
+	public void preservesSpecificRaidSourceNearDifferentVariantCompletion()
+	{
+		TrackerData.RaidCompletion normalToa = completion(
+			"Tombs of Amascut", "2026-07-17T06:25:41Z");
+		TrackerData.RaidCompletion normalCox = completion(
+			"Chambers of Xeric", "2026-07-17T06:25:41Z");
+		TrackerData.RaidCompletion normalTob = completion(
+			"Theatre of Blood", "2026-07-17T06:25:41Z");
+
+		assertEquals("Tombs of Amascut: Expert Mode", RaidLootMatcher.resolveSource(
+			"Tombs of Amascut: Expert Mode", "2026-07-17T06:26:02Z", Collections.singletonList(normalToa)));
+		assertEquals("Chambers of Xeric: Challenge Mode", RaidLootMatcher.resolveSource(
+			"Chambers of Xeric: Challenge Mode", "2026-07-17T06:26:02Z", Collections.singletonList(normalCox)));
+		assertEquals("Theatre of Blood: Hard Mode", RaidLootMatcher.resolveSource(
+			"Theatre of Blood: Hard Mode", "2026-07-17T06:26:02Z", Collections.singletonList(normalTob)));
+	}
+
+	@Test
 	public void repairsPreviouslyStoredGenericToaLootAndInferredNormalKc()
 	{
 		TrackerData data = new TrackerData();
@@ -100,5 +132,13 @@ public class RaidLootMatcherTest
 		assertFalse(kcDay.kills.containsKey("Tombs of Amascut"));
 		assertEquals(Integer.valueOf(110), kcDay.endingKillCounts.get("Tombs of Amascut"));
 		assertEquals(Integer.valueOf(110), data.lastKnownKillCounts.get("Tombs of Amascut"));
+	}
+
+	private static TrackerData.RaidCompletion completion(String source, String occurredAt)
+	{
+		TrackerData.RaidCompletion completion = new TrackerData.RaidCompletion();
+		completion.source = source;
+		completion.occurredAt = occurredAt;
+		return completion;
 	}
 }

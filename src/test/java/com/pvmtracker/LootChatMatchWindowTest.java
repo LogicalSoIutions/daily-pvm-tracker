@@ -1,5 +1,6 @@
 package com.pvmtracker;
 
+import java.time.Instant;
 import org.junit.Test;
 
 import static org.junit.Assert.assertFalse;
@@ -18,5 +19,16 @@ public class LootChatMatchWindowTest
 	public void matchesEitherEventOrder()
 	{
 		assertTrue(DailyPvmTrackerPlugin.isWithinLootChatMatchWindow(100, 110));
+	}
+
+	@Test
+	public void attachesDelayedKillCountChatToRecentLoot()
+	{
+		Instant lootTime = Instant.parse("2026-07-18T05:04:47Z");
+
+		assertTrue(DailyPvmTrackerPlugin.isWithinRecentLootKcMatchWindow(
+			lootTime, lootTime.plusSeconds(90)));
+		assertFalse(DailyPvmTrackerPlugin.isWithinRecentLootKcMatchWindow(
+			lootTime, lootTime.plusSeconds(91)));
 	}
 }

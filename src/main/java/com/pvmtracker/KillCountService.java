@@ -26,7 +26,7 @@ final class KillCountService
 			{
 				return false;
 			}
-			delta = previous == null ? 1 : exactKillCount - previous;
+			delta = previous == null || RaidLootMatcher.isRaid(boss) ? 1 : exactKillCount - previous;
 			ending = exactKillCount;
 		}
 
@@ -36,7 +36,7 @@ final class KillCountService
 		{
 			day.recoveredKills.merge(boss, delta - 1, Integer::sum);
 		}
-		if (previous != null)
+		if (previous != null && !(exactKillCount != null && RaidLootMatcher.isRaid(boss)))
 		{
 			day.startingKillCounts.putIfAbsent(boss, previous);
 		}

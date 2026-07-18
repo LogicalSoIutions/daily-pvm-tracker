@@ -79,10 +79,8 @@ import okhttp3.OkHttpClient;
 public class DailyPvmTrackerPlugin extends Plugin
 {
 	private static final long INVALID_ACCOUNT = -1L;
-	// Ordinary loot and completion chat do not arrive in a guaranteed order. Raids
-	// and the Gauntlet are retained until their matching reward chest is claimed.
 	private static final int LOOT_CHAT_MATCH_TICKS = 10;
-	private static final Duration RECENT_LOOT_KC_MATCH_WINDOW = Duration.ofSeconds(15);
+	private static final Duration RECENT_LOOT_KC_MATCH_WINDOW = Duration.ofSeconds(90);
 	private static final long PVM_HUB_UPLOAD_INTERVAL_MILLIS = 5L * 60L * 1000L;
 
 	@Inject
@@ -456,6 +454,12 @@ public class DailyPvmTrackerPlugin extends Plugin
 		return Math.abs(firstTick - secondTick) <= LOOT_CHAT_MATCH_TICKS;
 	}
 
+	static boolean isWithinRecentLootKcMatchWindow(Instant lootTime, Instant completionTime)
+	{
+		return Duration.between(lootTime, completionTime).abs()
+			.compareTo(RECENT_LOOT_KC_MATCH_WINDOW) <= 0;
+	}
+
 	static boolean canMatchCompletionLoot(int lootTick, int completionTick, String lootSource,
 		String completionSource)
 	{
@@ -676,7 +680,7 @@ public class DailyPvmTrackerPlugin extends Plugin
 			}
 			try
 			{
-				if (Duration.between(Instant.parse(kill.occurredAt), now).abs().compareTo(RECENT_LOOT_KC_MATCH_WINDOW) <= 0)
+				if (isWithinRecentLootKcMatchWindow(Instant.parse(kill.occurredAt), now))
 				{
 					kill.killCount = exactKillCount;
 					return true;
@@ -684,7 +688,6 @@ public class DailyPvmTrackerPlugin extends Plugin
 			}
 			catch (java.time.format.DateTimeParseException ignored)
 			{
-				// Older malformed timestamps cannot be safely attributed to this KC.
 			}
 		}
 		return false;

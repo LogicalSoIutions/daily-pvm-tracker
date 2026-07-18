@@ -69,6 +69,21 @@ public class KillCountServiceTest
 	}
 
 	@Test
+	public void exactChatJumpRecordsOnlyTheObservedCompletion()
+	{
+		TrackerData data = new TrackerData();
+		data.lastKnownKillCounts.put("Chambers of Xeric", 67);
+
+		assertTrue(service.recordCompletion(data, date, "Chambers of Xeric", 69));
+
+		TrackerData.KcDay day = data.kcDays.get(date.toString());
+		assertEquals(Integer.valueOf(1), day.kills.get("Chambers of Xeric"));
+		assertFalse(day.recoveredKills.containsKey("Chambers of Xeric"));
+		assertEquals(Integer.valueOf(68), day.startingKillCounts.get("Chambers of Xeric"));
+		assertEquals(Integer.valueOf(69), day.endingKillCounts.get("Chambers of Xeric"));
+	}
+
+	@Test
 	public void exactChatCountCorrectsALootOnlyCounterThatDriftedAhead()
 	{
 		TrackerData data = new TrackerData();

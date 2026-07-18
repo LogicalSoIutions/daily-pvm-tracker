@@ -42,10 +42,10 @@ public class DailySummaryServiceTest
 		DailySummary completed = summaries.stream().filter(summary -> summary.date.equals(date))
 			.findFirst().orElseThrow(AssertionError::new);
 
-		assertEquals(8, completed.totalKills);
+		assertEquals(7, completed.totalKills);
 		assertEquals(Integer.valueOf(6), completed.kills.get("Vorkath"));
-		assertEquals(Integer.valueOf(2), completed.kills.get("Tombs of Amascut"));
-		assertEquals(6, completed.totalRecoveredKills);
+		assertEquals(Integer.valueOf(1), completed.kills.get("Tombs of Amascut"));
+		assertEquals(5, completed.totalRecoveredKills);
 		assertEquals(1_250_000, completed.trackedLootValue);
 		assertEquals(1_600_000, completed.confirmedValue);
 		assertEquals(Integer.valueOf(100), completed.startingKillCounts.get("Vorkath"));

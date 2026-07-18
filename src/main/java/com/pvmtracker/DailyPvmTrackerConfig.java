@@ -4,7 +4,6 @@ import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 
-// Keep the original group so upgrades retain users' saved settings.
 @ConfigGroup("pvm-raid-daily-tracker")
 public interface DailyPvmTrackerConfig extends Config
 {
