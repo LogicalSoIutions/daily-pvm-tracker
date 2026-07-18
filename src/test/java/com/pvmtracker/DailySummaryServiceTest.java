@@ -156,7 +156,7 @@ public class DailySummaryServiceTest
 	}
 
 	@Test
-	public void summarizesRaidPointsAndExpectedUniqueValueByDay()
+	public void summarizesRaidPointsByDay()
 	{
 		TrackerData data = new TrackerData();
 		TrackerData.RaidCompletion raid = new TrackerData.RaidCompletion();
@@ -165,9 +165,6 @@ public class DailySummaryServiceTest
 		raid.personalPoints = 42_000;
 		raid.lootPoints = 37_000;
 		raid.raidLevel = 400;
-		raid.uniqueChance = .10d;
-		raid.expectedUniqueValue = 5_724_680L;
-		raid.estimateBasis = "Uncapped point and raid-level unique EV";
 		data.raidCompletions.add(raid);
 
 		DailySummary summary = summaryService.build(data, LocalDate.parse("2026-07-15"), false).get(0);
@@ -177,7 +174,6 @@ public class DailySummaryServiceTest
 		assertEquals(42_000L, raids.personalPoints);
 		assertEquals(37_000L, raids.lootPoints);
 		assertEquals(Integer.valueOf(400), raids.minimumRaidLevel);
-		assertEquals(5_724_680L, raids.expectedUniqueValue);
 	}
 
 	private static Map<String, Integer> counts(Object... values)

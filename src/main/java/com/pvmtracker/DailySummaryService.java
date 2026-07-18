@@ -88,17 +88,13 @@ final class DailySummaryService
 				raid.maximumRaidLevel = raid.maximumRaidLevel == null ? completion.raidLevel
 					: Math.max(raid.maximumRaidLevel, completion.raidLevel);
 			}
-			raid.totalUniqueChance += completion.uniqueChance;
-			raid.expectedUniqueValue += completion.expectedUniqueValue;
-			raid.estimateBasis = completion.estimateBasis;
 		}
 		return raids.entrySet().stream().map(entry ->
 		{
 			RaidAccumulator raid = entry.getValue();
 			return new DailySummary.RaidSummary(entry.getKey(), raid.completions, raid.personalPoints,
 				raid.pointRecords, raid.lootPoints, raid.teamPoints, raid.teamPointRecords,
-				raid.minimumRaidLevel, raid.maximumRaidLevel, raid.totalUniqueChance,
-				raid.expectedUniqueValue, raid.estimateBasis);
+				raid.minimumRaidLevel, raid.maximumRaidLevel);
 		}).collect(Collectors.toList());
 	}
 
@@ -148,9 +144,6 @@ final class DailySummaryService
 		int teamPointRecords;
 		Integer minimumRaidLevel;
 		Integer maximumRaidLevel;
-		double totalUniqueChance;
-		long expectedUniqueValue;
-		String estimateBasis;
 	}
 
 }

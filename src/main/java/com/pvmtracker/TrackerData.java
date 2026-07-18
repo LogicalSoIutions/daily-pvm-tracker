@@ -9,7 +9,7 @@ import java.util.List;
 
 final class TrackerData
 {
-	int schemaVersion = 2;
+	int schemaVersion = 3;
 	String lastKnownName = "";
 	String lastKnownKillCountsAt;
 	Map<String, Integer> lastKnownKillCounts = new LinkedHashMap<>();
@@ -150,8 +150,5 @@ final class TrackerData
 		Integer lootPoints;
 		Integer teamPoints;
 		Integer raidLevel;
-		double uniqueChance;
-		long expectedUniqueValue;
-		String estimateBasis;
 	}
 }

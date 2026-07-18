@@ -41,7 +41,9 @@ import net.runelite.api.events.GameTick;
 import net.runelite.api.events.GrandExchangeOfferChanged;
 import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.events.NpcChanged;
 import net.runelite.api.gameval.ItemID;
+import net.runelite.api.gameval.NpcID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.client.config.ConfigManager;
@@ -120,6 +122,7 @@ public class DailyPvmTrackerPlugin extends Plugin
 	private volatile Call uploadCall;
 	private volatile ScheduledFuture<?> scheduledUpload;
 	private boolean uploadPending;
+	private Integer pendingToaPoints;
 
 	@Override
 	protected void startUp()
@@ -204,6 +207,7 @@ public class DailyPvmTrackerPlugin extends Plugin
 		hiscoreRequestInFlight = false;
 		pendingLoot.clear();
 		highAlchTracker.clear();
+		pendingToaPoints = null;
 		recentChatCompletion = null;
 		trackingStatus = "Tracking locally.";
 		lastUploadAttemptAt = 0L;
@@ -249,6 +253,16 @@ public class DailyPvmTrackerPlugin extends Plugin
 			}
 			long accountHash = activeAccount;
 			executeStorage(() -> processGeOffers(accountHash, offers));
+		}
+	}
+
+	@Subscribe
+	public void onNpcChanged(NpcChanged event)
+	{
+		int npcId = event.getNpc().getId();
+		if (npcId == NpcID.TOA_WARDEN_P3_DEATH_ELIDINIS || npcId == NpcID.TOA_WARDEN_P3_DEATH_TUMEKEN)
+		{
+			pendingToaPoints = Math.max(0, client.getVarpValue(VarPlayerID.TOA_PERSONAL_CONTRIBUTION));
 		}
 	}
 
@@ -484,6 +498,7 @@ public class DailyPvmTrackerPlugin extends Plugin
 	{
 		activeAccount = accountHash;
 		recentChatCompletion = null;
+		pendingToaPoints = null;
 		cancelUpload();
 		lastUploadAttemptAt = 0L;
 		trackingStatus = "Tracking locally. Checking hiscores for missed KC…";
@@ -499,7 +514,13 @@ public class DailyPvmTrackerPlugin extends Plugin
 				}
 				loadedAccount = accountHash;
 				data = loaded;
+				boolean repairedRaidLoot = RaidLootMatcher.repairGenericRaidLootAttribution(data);
 				data.lastKnownName = name;
+				if (repairedRaidLoot)
+				{
+					TrackerDataEditor.recalculateAllSourceTotals(data);
+					store.save(accountHash, data);
+				}
 				backfillMissingValues(accountHash, LootValueBackfill.missingItemIds(data));
 				geSyncOnTick = true;
 				refreshPanel();
@@ -612,16 +633,12 @@ public class DailyPvmTrackerPlugin extends Plugin
 		}
 		else if (source.startsWith("Tombs of Amascut"))
 		{
-			raid.personalPoints = Math.max(0, client.getVarpValue(VarPlayerID.TOA_PERSONAL_CONTRIBUTION));
+			int currentPoints = Math.max(0, client.getVarpValue(VarPlayerID.TOA_PERSONAL_CONTRIBUTION));
+			raid.personalPoints = currentPoints > 0 || pendingToaPoints == null ? currentPoints : pendingToaPoints;
+			pendingToaPoints = null;
 			raid.lootPoints = Math.max(0, raid.personalPoints - 5_000);
 			raid.raidLevel = Math.max(0, client.getVarbitValue(VarbitID.TOA_CLIENT_RAID_LEVEL));
 		}
-		int points = raid.lootPoints == null ? 0 : raid.lootPoints;
-		int level = raid.raidLevel == null ? 0 : raid.raidLevel;
-		RaidValueEstimator.Estimate estimate = RaidValueEstimator.estimate(source, points, level);
-		raid.uniqueChance = estimate.uniqueChance;
-		raid.expectedUniqueValue = estimate.expectedUniqueValue;
-		raid.estimateBasis = estimate.basis;
 		return raid;
 	}
 
@@ -679,8 +696,11 @@ public class DailyPvmTrackerPlugin extends Plugin
 		{
 			return;
 		}
+		String resolvedSource = RaidLootMatcher.resolveSource(pending.source, pending.occurredAt,
+			data.raidCompletions);
+		boolean attributedToCompletion = !resolvedSource.equals(pending.source);
 		TrackerData.LootDay day = data.lootDays.computeIfAbsent(pending.date.toString(), ignored -> new TrackerData.LootDay());
-		TrackerData.LootSource source = day.sources.computeIfAbsent(pending.source, ignored -> new TrackerData.LootSource());
+		TrackerData.LootSource source = day.sources.computeIfAbsent(resolvedSource, ignored -> new TrackerData.LootSource());
 		source.drops += pending.drops;
 		for (CapturedItem item : pending.items)
 		{
@@ -688,7 +708,7 @@ public class DailyPvmTrackerPlugin extends Plugin
 				ignored -> new TrackerData.LootItem(item.itemId, item.name));
 			aggregate.quantity += item.quantity;
 			aggregate.totalValue += item.value;
-			if (!data.isLootHidden(pending.source, item.itemId))
+			if (!data.isLootHidden(resolvedSource, item.itemId))
 			{
 				source.totalValue += item.value;
 			}
@@ -697,21 +717,21 @@ public class DailyPvmTrackerPlugin extends Plugin
 		kill.id = UUID.randomUUID().toString();
 		kill.date = pending.date.toString();
 		kill.occurredAt = pending.occurredAt;
-		kill.source = pending.source;
+		kill.source = resolvedSource;
 		kill.killCount = pending.killCount;
 		kill.kills = pending.drops;
 		for (CapturedItem item : pending.items)
 		{
 			kill.items.add(new TrackerData.KillLootItem(item.itemId, item.name, item.quantity, item.value));
-			if (!data.isLootHidden(pending.source, item.itemId))
+			if (!data.isLootHidden(resolvedSource, item.itemId))
 			{
 				kill.totalValue += item.value;
 			}
 		}
 		data.killLog.add(kill);
-		if (!pending.completionHandled)
+		if (!pending.completionHandled && !attributedToCompletion)
 		{
-			killCountService.recordLootCompletionIfMissing(data, pending.date, pending.source, source.drops);
+			killCountService.recordLootCompletionIfMissing(data, pending.date, resolvedSource, source.drops);
 		}
 		saveAndRefresh(pending.accountHash);
 	}

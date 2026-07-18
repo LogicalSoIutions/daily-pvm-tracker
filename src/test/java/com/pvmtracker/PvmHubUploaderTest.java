@@ -44,6 +44,12 @@ public class PvmHubUploaderTest
 		TrackerData snapshot = new TrackerData();
 		snapshot.lastKnownName = "Logical";
 		snapshot.lastKnownKillCounts.put("Vorkath", 42);
+		TrackerData.RaidCompletion raid = new TrackerData.RaidCompletion();
+		raid.id = "raid-1";
+		raid.date = "2026-07-16";
+		raid.occurredAt = "2026-07-17T06:25:41Z";
+		raid.source = "Tombs of Amascut: Expert Mode";
+		snapshot.raidCompletions.add(raid);
 		CompletableFuture<Integer> result = new CompletableFuture<>();
 
 		PvmHubUploader.uploadSnapshot(snapshot, new GsonBuilder().create(), client,
@@ -66,6 +72,10 @@ public class PvmHubUploaderTest
 		TrackerData uploaded = new GsonBuilder().create().fromJson(capturedBody.get(), TrackerData.class);
 		assertEquals("Logical", uploaded.lastKnownName);
 		assertEquals(Integer.valueOf(42), uploaded.lastKnownKillCounts.get("Vorkath"));
+		assertEquals(3, uploaded.schemaVersion);
+		assertFalse(capturedBody.get().contains("uniqueChance"));
+		assertFalse(capturedBody.get().contains("expectedUniqueValue"));
+		assertFalse(capturedBody.get().contains("estimateBasis"));
 	}
 
 	@Test

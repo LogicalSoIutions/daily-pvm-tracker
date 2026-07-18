@@ -35,7 +35,6 @@ public class TrackerStoreTest
 		raid.date = "2026-07-15";
 		raid.source = "Chambers of Xeric";
 		raid.personalPoints = 26_028;
-		raid.expectedUniqueValue = 1_000_000L;
 		first.raidCompletions.add(raid);
 
 		store.save(11L, first);
@@ -43,7 +42,7 @@ public class TrackerStoreTest
 
 		TrackerData loadedFirst = store.load(11L);
 		TrackerData loadedSecond = store.load(22L);
-		assertEquals(2, loadedFirst.schemaVersion);
+		assertEquals(3, loadedFirst.schemaVersion);
 		assertEquals("One", loadedFirst.lastKnownName);
 		assertEquals(Integer.valueOf(42), loadedFirst.lastKnownKillCounts.get("Vorkath"));
 		assertEquals(Long.valueOf(12_500_000L), loadedFirst.lootDays.get("2026-07-15").manualAdjustments.get("Nex"));
@@ -96,7 +95,7 @@ public class TrackerStoreTest
 		{
 			exported = new GsonBuilder().create().fromJson(reader, TrackerData.class);
 		}
-		assertEquals(2, exported.schemaVersion);
+		assertEquals(3, exported.schemaVersion);
 		assertEquals("Logical", exported.lastKnownName);
 		assertEquals(Integer.valueOf(42), exported.lastKnownKillCounts.get("Vorkath"));
 	}

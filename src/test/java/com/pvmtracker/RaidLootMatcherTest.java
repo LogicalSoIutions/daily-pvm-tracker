@@ -1,9 +1,11 @@
 package com.pvmtracker;
 
+import java.util.Collections;
 import net.runelite.api.gameval.ItemID;
 import org.junit.Test;
 
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 public class RaidLootMatcherTest
@@ -36,5 +38,67 @@ public class RaidLootMatcherTest
 			"The Gauntlet", "The Gauntlet"));
 		assertFalse(DailyPvmTrackerPlugin.canMatchCompletionLoot(10_000, 100,
 			"The Gauntlet", "The Corrupted Gauntlet"));
+	}
+
+	@Test
+	public void attributesGenericToaLootToNearbyExpertCompletion()
+	{
+		TrackerData.RaidCompletion completion = new TrackerData.RaidCompletion();
+		completion.source = "Tombs of Amascut: Expert Mode";
+		completion.occurredAt = "2026-07-17T06:25:41.901931200Z";
+
+		assertEquals("Tombs of Amascut: Expert Mode", RaidLootMatcher.resolveSource(
+			"Tombs of Amascut", "2026-07-17T06:26:02.896577800Z",
+			Collections.singletonList(completion)));
+	}
+
+	@Test
+	public void doesNotAttributeGenericToaLootToAnOldExpertCompletion()
+	{
+		TrackerData.RaidCompletion completion = new TrackerData.RaidCompletion();
+		completion.source = "Tombs of Amascut: Expert Mode";
+		completion.occurredAt = "2026-07-17T06:20:00Z";
+
+		assertEquals("Tombs of Amascut", RaidLootMatcher.resolveSource(
+			"Tombs of Amascut", "2026-07-17T06:26:02Z", Collections.singletonList(completion)));
+	}
+
+	@Test
+	public void repairsPreviouslyStoredGenericToaLootAndInferredNormalKc()
+	{
+		TrackerData data = new TrackerData();
+		data.lastKnownKillCounts.put("Tombs of Amascut", 111);
+		TrackerData.KcDay kcDay = new TrackerData.KcDay();
+		kcDay.kills.put("Tombs of Amascut", 1);
+		kcDay.startingKillCounts.put("Tombs of Amascut", 110);
+		kcDay.endingKillCounts.put("Tombs of Amascut", 111);
+		data.kcDays.put("2026-07-16", kcDay);
+		TrackerData.LootDay lootDay = new TrackerData.LootDay();
+		TrackerData.LootSource source = new TrackerData.LootSource();
+		source.drops = 1;
+		TrackerData.LootItem item = new TrackerData.LootItem(1615, "Dragonstone");
+		item.quantity = 44;
+		item.totalValue = 475_816L;
+		source.items.put(item.itemId, item);
+		lootDay.sources.put("Tombs of Amascut", source);
+		data.lootDays.put("2026-07-16", lootDay);
+		TrackerData.KillLogEntry kill = new TrackerData.KillLogEntry();
+		kill.date = "2026-07-16";
+		kill.occurredAt = "2026-07-17T06:26:02.896577800Z";
+		kill.source = "Tombs of Amascut";
+		kill.items.add(new TrackerData.KillLootItem(1615, "Dragonstone", 44, 475_816L));
+		data.killLog.add(kill);
+		TrackerData.RaidCompletion completion = new TrackerData.RaidCompletion();
+		completion.source = "Tombs of Amascut: Expert Mode";
+		completion.occurredAt = "2026-07-17T06:25:41.901931200Z";
+		data.raidCompletions.add(completion);
+
+		assertTrue(RaidLootMatcher.repairGenericRaidLootAttribution(data));
+		assertEquals("Tombs of Amascut: Expert Mode", kill.source);
+		assertFalse(lootDay.sources.containsKey("Tombs of Amascut"));
+		assertEquals(1, lootDay.sources.get("Tombs of Amascut: Expert Mode").drops);
+		assertFalse(kcDay.kills.containsKey("Tombs of Amascut"));
+		assertEquals(Integer.valueOf(110), kcDay.endingKillCounts.get("Tombs of Amascut"));
+		assertEquals(Integer.valueOf(110), data.lastKnownKillCounts.get("Tombs of Amascut"));
 	}
 }

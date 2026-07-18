@@ -463,14 +463,6 @@ final class DailyPvmTrackerPanel extends PluginPanel
 		amounts.add(amount);
 		amounts.add(Box.createVerticalStrut(2));
 		amounts.add(confirmed);
-		DailySummary.RaidSummary raid = summary.findRaid(boss);
-		if (raid != null)
-		{
-			amounts.add(Box.createVerticalStrut(2));
-			JLabel expected = label("Unique EV " + formatGp(raid.expectedUniqueValue), 9, ACCENT);
-			expected.setHorizontalAlignment(SwingConstants.RIGHT);
-			amounts.add(expected);
-		}
 		row.add(left, BorderLayout.CENTER);
 		row.add(amounts, BorderLayout.EAST);
 		row.setName("boss-row");
@@ -518,7 +510,7 @@ final class DailyPvmTrackerPanel extends PluginPanel
 		if (raid != null)
 		{
 			detail.add(Box.createVerticalStrut(15));
-			detail.add(sectionLabel("Raid points and expected value"));
+			detail.add(sectionLabel("Raid details"));
 			detail.add(Box.createVerticalStrut(6));
 			detail.add(metricRow("Recorded raids", Integer.toString(raid.completions), TEXT));
 			if (raid.pointRecords > 0)
@@ -545,10 +537,6 @@ final class DailyPvmTrackerPanel extends PluginPanel
 					? raid.minimumRaidLevel.toString() : raid.minimumRaidLevel + "–" + raid.maximumRaidLevel;
 				detail.add(metricRow("Raid level", levels, TEXT));
 			}
-			detail.add(metricRow("Unique chance / raid", String.format("%.2f%%",
-				100d * raid.totalUniqueChance / raid.completions), TEXT));
-			detail.add(metricRow("Expected unique value", formatGp(raid.expectedUniqueValue), ACCENT));
-			detail.add(metricRow("Estimate basis", raid.estimateBasis, MUTED));
 		}
 
 		long tracked = summary.bossTrackedValue(boss);

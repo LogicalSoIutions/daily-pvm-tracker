@@ -59,12 +59,6 @@ final class DailySummary
 		return raids.stream().filter(entry -> entry.source.equals(source)).findFirst().orElse(null);
 	}
 
-	long bossExpectedUniqueValue(String source)
-	{
-		RaidSummary summary = findRaid(source);
-		return summary == null ? 0L : summary.expectedUniqueValue;
-	}
-
 	long bossTrackedValue(String source)
 	{
 		LootSummary summary = findLoot(source);
@@ -124,13 +118,9 @@ final class DailySummary
 		final int teamPointRecords;
 		final Integer minimumRaidLevel;
 		final Integer maximumRaidLevel;
-		final double totalUniqueChance;
-		final long expectedUniqueValue;
-		final String estimateBasis;
 
 		RaidSummary(String source, int completions, long personalPoints, int pointRecords, long lootPoints,
-			long teamPoints, int teamPointRecords, Integer minimumRaidLevel, Integer maximumRaidLevel,
-			double totalUniqueChance, long expectedUniqueValue, String estimateBasis)
+			long teamPoints, int teamPointRecords, Integer minimumRaidLevel, Integer maximumRaidLevel)
 		{
 			this.source = source;
 			this.completions = completions;
@@ -141,9 +131,6 @@ final class DailySummary
 			this.teamPointRecords = teamPointRecords;
 			this.minimumRaidLevel = minimumRaidLevel;
 			this.maximumRaidLevel = maximumRaidLevel;
-			this.totalUniqueChance = totalUniqueChance;
-			this.expectedUniqueValue = expectedUniqueValue;
-			this.estimateBasis = estimateBasis;
 		}
 	}
 
