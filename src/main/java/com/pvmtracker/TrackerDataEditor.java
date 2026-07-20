@@ -34,17 +34,38 @@ final class TrackerDataEditor
 	{
 		String key = date.toString();
 		TrackerData.LootDay day = data.lootDays.get(key);
-		if (day == null || day.sources.remove(boss) == null)
+		boolean changed = day != null && day.sources.remove(boss) != null;
+		for (TrackerData.KillLogEntry kill : data.killLog)
 		{
-			return false;
+			if (key.equals(kill.date) && boss.equals(kill.source)
+				&& (!kill.items.isEmpty() || kill.totalValue != 0))
+			{
+				kill.items.clear();
+				kill.totalValue = 0;
+				changed = true;
+			}
 		}
-		removeEmptyDay(data, key, day);
-		return true;
+		if (day != null)
+		{
+			removeEmptyDay(data, key, day);
+		}
+		return changed;
 	}
 
 	static boolean deleteDayGp(TrackerData data, LocalDate date)
 	{
-		return data.lootDays.remove(date.toString()) != null;
+		String key = date.toString();
+		boolean changed = data.lootDays.remove(key) != null;
+		for (TrackerData.KillLogEntry kill : data.killLog)
+		{
+			if (key.equals(kill.date) && (!kill.items.isEmpty() || kill.totalValue != 0))
+			{
+				kill.items.clear();
+				kill.totalValue = 0;
+				changed = true;
+			}
+		}
+		return changed;
 	}
 
 	static boolean setLootHidden(TrackerData data, String boss, int itemId, boolean hidden)

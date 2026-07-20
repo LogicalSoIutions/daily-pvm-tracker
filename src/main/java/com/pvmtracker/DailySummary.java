@@ -8,40 +8,33 @@ import java.util.Map;
 final class DailySummary
 {
 	final LocalDate date;
-	final LocalDate intervalEnd;
 	final boolean completed;
 	final Map<String, Integer> kills;
-	final Map<String, Integer> recoveredKills;
 	final Map<String, Integer> startingKillCounts;
 	final Map<String, Integer> endingKillCounts;
 	final List<LootSummary> loot;
 	final List<RaidSummary> raids;
 	final int totalKills;
-	final int totalRecoveredKills;
 	final long trackedLootValue;
 	final long confirmedValue;
 	final Map<String, Long> manualAdjustments;
 	final long totalAdjustment;
 	final long totalValue;
 
-	DailySummary(LocalDate date, LocalDate intervalEnd, boolean completed, Map<String, Integer> kills,
-		Map<String, Integer> recoveredKills,
+	DailySummary(LocalDate date, boolean completed, Map<String, Integer> kills,
 		Map<String, Integer> startingKillCounts, Map<String, Integer> endingKillCounts,
-		List<LootSummary> loot, List<RaidSummary> raids, int totalKills, int totalRecoveredKills,
+		List<LootSummary> loot, List<RaidSummary> raids, int totalKills,
 		long trackedLootValue, long confirmedValue,
 		Map<String, Long> manualAdjustments, long totalAdjustment, long totalValue)
 	{
 		this.date = date;
-		this.intervalEnd = intervalEnd;
 		this.completed = completed;
 		this.kills = Collections.unmodifiableMap(kills);
-		this.recoveredKills = Collections.unmodifiableMap(recoveredKills);
 		this.startingKillCounts = Collections.unmodifiableMap(startingKillCounts);
 		this.endingKillCounts = Collections.unmodifiableMap(endingKillCounts);
 		this.loot = Collections.unmodifiableList(loot);
 		this.raids = Collections.unmodifiableList(raids);
 		this.totalKills = totalKills;
-		this.totalRecoveredKills = totalRecoveredKills;
 		this.trackedLootValue = trackedLootValue;
 		this.confirmedValue = confirmedValue;
 		this.manualAdjustments = Collections.unmodifiableMap(manualAdjustments);
@@ -79,11 +72,6 @@ final class DailySummary
 	{
 		LootSummary summary = findLoot(source);
 		return summary == null ? 0L : summary.confirmedValue;
-	}
-
-	int intervalDays()
-	{
-		return intervalEnd == null ? 1 : Math.max(1, (int) java.time.temporal.ChronoUnit.DAYS.between(date, intervalEnd));
 	}
 
 	static final class LootSummary

@@ -9,7 +9,7 @@ import java.util.List;
 
 final class TrackerData
 {
-	int schemaVersion = 3;
+	int schemaVersion = 5;
 	String lastKnownName = "";
 	String lastKnownKillCountsAt;
 	Map<String, Integer> lastKnownKillCounts = new LinkedHashMap<>();
@@ -113,8 +113,16 @@ final class TrackerData
 		String source;
 		Integer killCount;
 		int kills = 1;
+		Boolean lootCaptured;
 		long totalValue;
 		List<KillLootItem> items = new ArrayList<>();
+
+		boolean hasCapturedLoot()
+		{
+			// Legacy kill-log rows were created only by loot events, so a missing
+			// value means that loot was captured.
+			return lootCaptured == null || lootCaptured;
+		}
 	}
 
 	static final class KillLootItem
@@ -142,6 +150,7 @@ final class TrackerData
 	static final class RaidCompletion
 	{
 		String id;
+		String killId;
 		String date;
 		String occurredAt;
 		String source;

@@ -42,10 +42,9 @@ public class DailySummaryServiceTest
 		DailySummary completed = summaries.stream().filter(summary -> summary.date.equals(date))
 			.findFirst().orElseThrow(AssertionError::new);
 
-		assertEquals(7, completed.totalKills);
-		assertEquals(Integer.valueOf(6), completed.kills.get("Vorkath"));
+		assertEquals(2, completed.totalKills);
+		assertEquals(Integer.valueOf(1), completed.kills.get("Vorkath"));
 		assertEquals(Integer.valueOf(1), completed.kills.get("Tombs of Amascut"));
-		assertEquals(5, completed.totalRecoveredKills);
 		assertEquals(1_250_000, completed.trackedLootValue);
 		assertEquals(1_600_000, completed.confirmedValue);
 		assertEquals(Integer.valueOf(100), completed.startingKillCounts.get("Vorkath"));
@@ -53,21 +52,17 @@ public class DailySummaryServiceTest
 	}
 
 	@Test
-	public void labelsHiscoreRecoveryAcrossAnOfflineInterval()
+	public void hiscoresAdvanceTheBaselineWithoutAddingTimelineKills()
 	{
 		TrackerData data = new TrackerData();
 		data.lastKnownKillCounts.put("Zulrah", 10);
 		data.lastKnownKillCountsAt = "2026-07-10";
 
-		int recovered = killCountService.reconcile(data, LocalDate.parse("2026-07-13"), counts("Zulrah", 15));
-		DailySummary summary = summaryService.build(data, LocalDate.parse("2026-07-13"), true).stream()
-			.filter(day -> day.date.equals(LocalDate.parse("2026-07-10")))
-			.findFirst().orElseThrow(AssertionError::new);
+		assertEquals(5, killCountService.reconcile(data, LocalDate.parse("2026-07-13"), counts("Zulrah", 15)));
 
-		assertEquals(5, recovered);
-		assertEquals(3, summary.intervalDays());
-		assertEquals(5, summary.totalKills);
-		assertEquals(5, summary.totalRecoveredKills);
+		assertTrue(data.kcDays.isEmpty());
+		assertEquals(Integer.valueOf(15), data.lastKnownKillCounts.get("Zulrah"));
+		assertEquals("2026-07-13", data.lastKnownKillCountsAt);
 	}
 
 	@Test

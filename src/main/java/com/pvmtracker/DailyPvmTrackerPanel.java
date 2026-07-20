@@ -291,20 +291,12 @@ final class DailyPvmTrackerPanel extends PluginPanel
 
 		JPanel left = transparentVerticalPanel();
 		String dayTitle = summary.date.format(DAY);
-		if (summary.intervalDays() > 1)
-		{
-			dayTitle += " · " + summary.intervalDays() + " days";
-		}
 		JLabel date = label(dayTitle, 12, TEXT);
 		date.setFont(date.getFont().deriveFont(Font.BOLD));
 		left.add(date);
 		left.add(Box.createVerticalStrut(3));
 		String activity = summary.completed ? summary.totalKills + " kc gained"
 			: summary.totalKills > 0 ? summary.totalKills + " kc so far" : "Tracking locally";
-		if (summary.totalRecoveredKills > 0)
-		{
-			activity += " · " + summary.totalRecoveredKills + " recovered";
-		}
 		left.add(label(activity, 10, MUTED));
 
 		JPanel right = transparentVerticalPanel();
@@ -420,7 +412,7 @@ final class DailyPvmTrackerPanel extends PluginPanel
 		date.setFont(date.getFont().deriveFont(Font.BOLD));
 		left.add(date);
 		left.add(Box.createVerticalStrut(4));
-		left.add(label(summary.intervalDays() > 1 ? summary.intervalDays() + " day recovered interval" : "Calendar day", 9, MUTED));
+		left.add(label("Calendar day", 9, MUTED));
 		JPanel right = transparentVerticalPanel();
 		JLabel estimated = label("Est. " + formatGp(summary.totalValue), 10, TEXT);
 		estimated.setToolTipText(ESTIMATED_GP_TOOLTIP);
@@ -449,9 +441,7 @@ final class DailyPvmTrackerPanel extends PluginPanel
 		left.add(name);
 		left.add(Box.createVerticalStrut(2));
 		int kills = summary.kills.getOrDefault(boss, 0);
-		int recovered = summary.recoveredKills.getOrDefault(boss, 0);
-		left.add(label(kills + " kc" + (summary.completed ? " gained" : " so far")
-			+ (recovered > 0 ? " · " + recovered + " recovered" : ""), 9, MUTED));
+		left.add(label(kills + " kc" + (summary.completed ? " gained" : " so far"), 9, MUTED));
 		long value = summary.bossTrackedValue(boss) + summary.bossAdjustment(boss);
 		JPanel amounts = transparentVerticalPanel();
 		JLabel amount = label("Est. " + formatGp(value) + "  ›", 9, value == 0 ? MUTED : TEXT);
@@ -496,13 +486,8 @@ final class DailyPvmTrackerPanel extends PluginPanel
 		detail.add(Box.createVerticalStrut(15));
 		detail.add(sectionLabel("Kill counts"));
 		detail.add(Box.createVerticalStrut(6));
-		detail.add(metricRow(summary.intervalDays() > 1 ? "Gained this interval" : "Gained this day",
+		detail.add(metricRow("Gained this day",
 			Integer.toString(summary.kills.getOrDefault(boss, 0)), TEXT));
-		int recovered = summary.recoveredKills.getOrDefault(boss, 0);
-		if (recovered > 0)
-		{
-			detail.add(metricRow("Recovered from hiscores", Integer.toString(recovered), MUTED));
-		}
 		detail.add(metricRow("KC at start", formatCount(summary.startingKillCounts.get(boss)), TEXT));
 		detail.add(metricRow("KC at end", formatCount(summary.endingKillCounts.get(boss)), TEXT));
 

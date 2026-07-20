@@ -25,10 +25,20 @@ public class TrackerDataEditorTest
 	public void deletesBossLootWithoutDeletingSplit()
 	{
 		TrackerData data = dataWithLootAndSplit();
+		TrackerData.KillLogEntry kill = new TrackerData.KillLogEntry();
+		kill.date = DATE.toString();
+		kill.source = "Nex";
+		kill.lootCaptured = true;
+		kill.totalValue = 1_000L;
+		kill.items.add(new TrackerData.KillLootItem(100, "Item", 1, 1_000L));
+		data.killLog.add(kill);
 
 		assertTrue(TrackerDataEditor.deleteBossLoot(data, DATE, "Nex"));
 		assertTrue(data.lootDays.get(DATE.toString()).sources.isEmpty());
 		assertFalse(data.lootDays.get(DATE.toString()).manualAdjustments.isEmpty());
+		assertTrue(kill.items.isEmpty());
+		assertEquals(0L, kill.totalValue);
+		assertTrue(kill.hasCapturedLoot());
 	}
 
 	@Test

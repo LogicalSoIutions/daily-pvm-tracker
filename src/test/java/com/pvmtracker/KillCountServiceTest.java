@@ -40,7 +40,7 @@ public class KillCountServiceTest
 	}
 
 	@Test
-	public void recoveredKillsDoNotHideANewLootOnlyCompletion()
+	public void hiscoreBaselineDoesNotHideANewLootOnlyCompletion()
 	{
 		TrackerData data = new TrackerData();
 		data.lastKnownKillCounts.put("Maggot King", 483);
@@ -49,8 +49,8 @@ public class KillCountServiceTest
 		assertTrue(service.recordLootCompletionIfMissing(data, date, "Maggot King", 1));
 
 		TrackerData.KcDay day = data.kcDays.get(date.toString());
-		assertEquals(Integer.valueOf(2), day.kills.get("Maggot King"));
-		assertEquals(Integer.valueOf(1), day.recoveredKills.get("Maggot King"));
+		assertEquals(Integer.valueOf(1), day.kills.get("Maggot King"));
+		assertTrue(day.recoveredKills.isEmpty());
 		assertEquals(Integer.valueOf(485), data.lastKnownKillCounts.get("Maggot King"));
 	}
 
@@ -79,7 +79,7 @@ public class KillCountServiceTest
 		TrackerData.KcDay day = data.kcDays.get(date.toString());
 		assertEquals(Integer.valueOf(1), day.kills.get("Chambers of Xeric"));
 		assertFalse(day.recoveredKills.containsKey("Chambers of Xeric"));
-		assertEquals(Integer.valueOf(68), day.startingKillCounts.get("Chambers of Xeric"));
+		assertEquals(Integer.valueOf(67), day.startingKillCounts.get("Chambers of Xeric"));
 		assertEquals(Integer.valueOf(69), day.endingKillCounts.get("Chambers of Xeric"));
 	}
 
@@ -126,5 +126,49 @@ public class KillCountServiceTest
 		assertEquals(Integer.valueOf(99), day.endingKillCounts.get("The Corrupted Gauntlet"));
 		assertEquals(Integer.valueOf(1), data.lastKnownKillCounts.get("The Gauntlet"));
 		assertEquals(Integer.valueOf(99), data.lastKnownKillCounts.get("The Corrupted Gauntlet"));
+	}
+
+	@Test
+	public void linksMissingLootCountWhenAdjacentCountsProveTheSequence()
+	{
+		TrackerData data = new TrackerData();
+		data.killLog.add(kill("Maggot King", 799));
+		data.killLog.add(kill("Maggot King", null));
+		data.killLog.add(kill("Maggot King", 801));
+
+		assertTrue(service.repairLegacyLootKillCounts(data));
+		assertEquals(Integer.valueOf(800), data.killLog.get(1).killCount);
+	}
+
+	@Test
+	public void linksTrailingLootAgainstLatestKnownCount()
+	{
+		TrackerData data = new TrackerData();
+		data.killLog.add(kill("Maggot King", 806));
+		data.killLog.add(kill("Maggot King", null));
+		data.lastKnownKillCounts.put("Maggot King", 807);
+
+		assertTrue(service.repairLegacyLootKillCounts(data));
+		assertEquals(Integer.valueOf(807), data.killLog.get(1).killCount);
+	}
+
+	@Test
+	public void doesNotGuessWhenTheCountGapExceedsObservedLoot()
+	{
+		TrackerData data = new TrackerData();
+		data.killLog.add(kill("Maggot King", 799));
+		data.killLog.add(kill("Maggot King", null));
+		data.killLog.add(kill("Maggot King", 802));
+
+		assertFalse(service.repairLegacyLootKillCounts(data));
+		assertEquals(null, data.killLog.get(1).killCount);
+	}
+
+	private static TrackerData.KillLogEntry kill(String source, Integer killCount)
+	{
+		TrackerData.KillLogEntry kill = new TrackerData.KillLogEntry();
+		kill.source = source;
+		kill.killCount = killCount;
+		return kill;
 	}
 }

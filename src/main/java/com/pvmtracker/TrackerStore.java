@@ -13,6 +13,7 @@ import net.runelite.client.RuneLite;
 final class TrackerStore
 {
 	private static final int PROFILE_ID_VERSION = 1;
+	private static final int CURRENT_SCHEMA_VERSION = 5;
 	private final Gson gson;
 	private final Path directory;
 
@@ -34,17 +35,22 @@ final class TrackerStore
 		{
 			return new TrackerData();
 		}
+		TrackerData data;
 		try (Reader reader = Files.newBufferedReader(file))
 		{
-			TrackerData data = gson.fromJson(reader, TrackerData.class);
-			if (data == null)
-			{
-				data = new TrackerData();
-			}
-			data.schemaVersion = 3;
-			TrackerDataEditor.recalculateAllSourceTotals(data);
-			return data;
+			data = gson.fromJson(reader, TrackerData.class);
 		}
+		if (data == null)
+		{
+			data = new TrackerData();
+		}
+		boolean migrated = TrackerDataMigration.migrateToCurrentVersion(data, CURRENT_SCHEMA_VERSION);
+		TrackerDataEditor.recalculateAllSourceTotals(data);
+		if (migrated)
+		{
+			writeAtomically(file, data);
+		}
+		return data;
 	}
 
 	void save(long accountHash, TrackerData data) throws IOException

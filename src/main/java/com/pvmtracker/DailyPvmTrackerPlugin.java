@@ -8,11 +8,9 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -79,8 +77,6 @@ import okhttp3.OkHttpClient;
 public class DailyPvmTrackerPlugin extends Plugin
 {
 	private static final long INVALID_ACCOUNT = -1L;
-	private static final int LOOT_CHAT_MATCH_TICKS = 10;
-	private static final Duration RECENT_LOOT_KC_MATCH_WINDOW = Duration.ofSeconds(90);
 	private static final long PVM_HUB_UPLOAD_INTERVAL_MILLIS = 5L * 60L * 1000L;
 
 	@Inject
@@ -102,7 +98,7 @@ public class DailyPvmTrackerPlugin extends Plugin
 
 	private final DailySummaryService summaryService = new DailySummaryService();
 	private final KillCountService killCountService = new KillCountService();
-	private final List<PendingLoot> pendingLoot = new ArrayList<>();
+	private final KillLogService killLogService = new KillLogService();
 	private final HighAlchTracker highAlchTracker = new HighAlchTracker();
 	private ScheduledExecutorService storageExecutor;
 	private TrackerStore store;
@@ -114,7 +110,6 @@ public class DailyPvmTrackerPlugin extends Plugin
 	private boolean initializeOnTick;
 	private volatile boolean geSyncOnTick;
 	private boolean hiscoreRequestInFlight;
-	private RecentCompletion recentChatCompletion;
 	private volatile String trackingStatus = "Tracking locally.";
 	private long lastUploadAttemptAt;
 	private volatile Call uploadCall;
@@ -203,10 +198,8 @@ public class DailyPvmTrackerPlugin extends Plugin
 		initializeOnTick = false;
 		geSyncOnTick = false;
 		hiscoreRequestInFlight = false;
-		pendingLoot.clear();
 		highAlchTracker.clear();
 		pendingToaPoints = null;
-		recentChatCompletion = null;
 		trackingStatus = "Tracking locally.";
 		lastUploadAttemptAt = 0L;
 		uploadPending = false;
@@ -220,16 +213,11 @@ public class DailyPvmTrackerPlugin extends Plugin
 		{
 			initializeOnTick = true;
 		}
-		else if (!pendingLoot.isEmpty())
-		{
-			flushPendingLoot(Integer.MAX_VALUE);
-		}
 	}
 
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
-		flushPendingLoot(client.getTickCount());
 		if (initializeOnTick)
 		{
 			Player player = client.getLocalPlayer();
@@ -280,23 +268,11 @@ public class DailyPvmTrackerPlugin extends Plugin
 		}
 		String source = observation.source;
 		TrackerData.RaidCompletion raidCompletion = captureRaidCompletion(source, observation.killCount);
-		int tick = client.getTickCount();
-		for (int i = pendingLoot.size() - 1; i >= 0; i--)
-		{
-			PendingLoot pending = pendingLoot.get(i);
-			if (!pending.completionHandled && RaidLootMatcher.matchesCompletion(pending.source, source)
-				&& isWithinLootChatMatchWindow(tick, pending.tick))
-			{
-				pending.source = source;
-				pending.killCount = observation.killCount;
-				pending.completionHandled = true;
-				break;
-			}
-		}
-		recentChatCompletion = new RecentCompletion(source, observation.killCount, tick);
 		long accountHash = activeAccount;
 		LocalDate date = LocalDate.now();
-		executeStorage(() -> recordCompletion(accountHash, date, source, observation.killCount, raidCompletion));
+		String occurredAt = raidCompletion == null ? Instant.now().toString() : raidCompletion.occurredAt;
+		executeStorage(() -> recordCompletion(accountHash, date, occurredAt, source,
+			observation.killCount, raidCompletion));
 	}
 
 	@Subscribe
@@ -381,18 +357,9 @@ public class DailyPvmTrackerPlugin extends Plugin
 			return;
 		}
 
-		int tick = client.getTickCount();
-		boolean completionHandled = recentChatCompletion != null
-			&& canMatchCompletionLoot(tick, recentChatCompletion.tick, canonicalSource,
-				recentChatCompletion.source);
-		String source = completionHandled ? recentChatCompletion.source : canonicalSource;
-		pendingLoot.add(new PendingLoot(activeAccount, LocalDate.now(), source,
-			Math.max(1, event.getAmount()), items, tick, completionHandled,
-			completionHandled ? recentChatCompletion.killCount : null, Instant.now().toString()));
-		if (completionHandled && retainsCompletionUntilMatchingLoot(source))
-		{
-			recentChatCompletion = null;
-		}
+		CapturedLoot loot = new CapturedLoot(activeAccount, LocalDate.now(), canonicalSource,
+			Math.max(1, event.getAmount()), items, Instant.now().toString());
+		executeStorage(() -> recordLoot(loot));
 	}
 
 	private List<CapturedItem> captureItems(java.util.Collection<ItemStack> stacks)
@@ -428,53 +395,6 @@ public class DailyPvmTrackerPlugin extends Plugin
 		return quantity;
 	}
 
-	private void flushPendingLoot(int currentTick)
-	{
-		Iterator<PendingLoot> iterator = pendingLoot.iterator();
-		while (iterator.hasNext())
-		{
-			PendingLoot pending = iterator.next();
-			if (currentTick != Integer.MAX_VALUE && isWithinLootChatMatchWindow(currentTick, pending.tick))
-			{
-				continue;
-			}
-			iterator.remove();
-			executeStorage(() -> recordLoot(pending));
-		}
-		if (recentChatCompletion != null && !retainsCompletionUntilMatchingLoot(recentChatCompletion.source)
-			&& currentTick != Integer.MAX_VALUE
-			&& currentTick - recentChatCompletion.tick > LOOT_CHAT_MATCH_TICKS)
-		{
-			recentChatCompletion = null;
-		}
-	}
-
-	static boolean isWithinLootChatMatchWindow(int firstTick, int secondTick)
-	{
-		return Math.abs(firstTick - secondTick) <= LOOT_CHAT_MATCH_TICKS;
-	}
-
-	static boolean isWithinRecentLootKcMatchWindow(Instant lootTime, Instant completionTime)
-	{
-		return Duration.between(lootTime, completionTime).abs()
-			.compareTo(RECENT_LOOT_KC_MATCH_WINDOW) <= 0;
-	}
-
-	static boolean canMatchCompletionLoot(int lootTick, int completionTick, String lootSource,
-		String completionSource)
-	{
-		return RaidLootMatcher.matchesCompletion(lootSource, completionSource)
-			&& (retainsCompletionUntilMatchingLoot(completionSource)
-				|| isWithinLootChatMatchWindow(lootTick, completionTick));
-	}
-
-	static boolean retainsCompletionUntilMatchingLoot(String source)
-	{
-		return RaidLootMatcher.isRaid(source)
-			|| "The Gauntlet".equals(source)
-			|| "The Corrupted Gauntlet".equals(source);
-	}
-
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
@@ -501,11 +421,10 @@ public class DailyPvmTrackerPlugin extends Plugin
 	private void activateCharacter(long accountHash, String name, HiscoreEndpoint endpoint)
 	{
 		activeAccount = accountHash;
-		recentChatCompletion = null;
 		pendingToaPoints = null;
 		cancelUpload();
 		lastUploadAttemptAt = 0L;
-		trackingStatus = "Tracking locally. Checking hiscores for missed KC…";
+		trackingStatus = "Tracking locally. Establishing KC baseline from hiscores…";
 		SwingUtilities.invokeLater(() -> panel.update(name, "Loading your private timeline…", new ArrayList<>()));
 		executeStorage(() ->
 		{
@@ -519,8 +438,10 @@ public class DailyPvmTrackerPlugin extends Plugin
 				loadedAccount = accountHash;
 				data = loaded;
 				boolean repairedRaidLoot = RaidLootMatcher.repairGenericRaidLootAttribution(data);
+				boolean repairedKillLinks = killCountService.repairLegacyLootKillCounts(data);
+				boolean repairedRaidLinks = killLogService.linkRaidCompletions(data);
 				data.lastKnownName = name;
-				if (repairedRaidLoot)
+				if (repairedRaidLoot || repairedKillLinks || repairedRaidLinks)
 				{
 					TrackerDataEditor.recalculateAllSourceTotals(data);
 					store.save(accountHash, data);
@@ -593,11 +514,9 @@ public class DailyPvmTrackerPlugin extends Plugin
 			return;
 		}
 
-		int recovered = killCountService.reconcile(data, date, extractKillCounts(result));
+		killCountService.reconcile(data, date, extractKillCounts(result));
 		data.lastKnownName = name;
-		trackingStatus = recovered == 0
-			? "Tracking locally. Hiscores checked at login."
-			: "Tracking locally. Recovered " + recovered + " missed KC from hiscores.";
+		trackingStatus = "Tracking locally. Hiscores checked at login.";
 		saveAndRefresh(accountHash);
 	}
 
@@ -646,8 +565,8 @@ public class DailyPvmTrackerPlugin extends Plugin
 		return raid;
 	}
 
-	private void recordCompletion(long accountHash, LocalDate date, String sourceName, int exactKillCount,
-		TrackerData.RaidCompletion raidCompletion)
+	private void recordCompletion(long accountHash, LocalDate date, String occurredAt, String sourceName,
+		int exactKillCount, TrackerData.RaidCompletion raidCompletion)
 	{
 		if (loadedAccount != accountHash || activeAccount != accountHash || data == null)
 		{
@@ -656,56 +575,48 @@ public class DailyPvmTrackerPlugin extends Plugin
 		Integer previousKillCount = data.lastKnownKillCounts.get(sourceName);
 		boolean completionRecorded = killCountService.recordCompletion(data, date, sourceName, exactKillCount);
 		boolean changed = completionRecorded;
-		changed |= attachKillCountToRecentLoot(data, sourceName, exactKillCount);
+		changed |= killLogService.recordCompletion(data, date.toString(), occurredAt, sourceName, exactKillCount);
+		TrackerData.KillLogEntry kill = killLogService.findCompletion(data, sourceName, exactKillCount);
 		if (changed)
 		{
 			boolean isNewCompletion = previousKillCount == null || exactKillCount > previousKillCount;
 			if (raidCompletion != null && completionRecorded && isNewCompletion)
 			{
+				raidCompletion.killId = kill == null ? null : kill.id;
 				data.raidCompletions.add(raidCompletion);
+				if (RaidLootMatcher.repairGenericRaidLootAttribution(data))
+				{
+					TrackerDataEditor.recalculateAllSourceTotals(data);
+				}
 			}
 			saveAndRefresh(accountHash);
 		}
 	}
 
-	private boolean attachKillCountToRecentLoot(TrackerData trackerData, String sourceName, int exactKillCount)
+	private void recordLoot(CapturedLoot captured)
 	{
-		Instant now = Instant.now();
-		for (int i = trackerData.killLog.size() - 1; i >= 0; i--)
-		{
-			TrackerData.KillLogEntry kill = trackerData.killLog.get(i);
-			if (kill.killCount != null || !sourceName.equals(kill.source) || kill.occurredAt == null)
-			{
-				continue;
-			}
-			try
-			{
-				if (isWithinRecentLootKcMatchWindow(Instant.parse(kill.occurredAt), now))
-				{
-					kill.killCount = exactKillCount;
-					return true;
-				}
-			}
-			catch (java.time.format.DateTimeParseException ignored)
-			{
-			}
-		}
-		return false;
-	}
-
-	private void recordLoot(PendingLoot pending)
-	{
-		if (loadedAccount != pending.accountHash || activeAccount != pending.accountHash || data == null)
+		if (loadedAccount != captured.accountHash || activeAccount != captured.accountHash || data == null)
 		{
 			return;
 		}
-		String resolvedSource = RaidLootMatcher.resolveSource(pending.source, pending.occurredAt,
+		String resolvedSource = RaidLootMatcher.resolveSource(captured.source, captured.occurredAt,
 			data.raidCompletions);
-		boolean attributedToCompletion = !resolvedSource.equals(pending.source);
-		TrackerData.LootDay day = data.lootDays.computeIfAbsent(pending.date.toString(), ignored -> new TrackerData.LootDay());
+		TrackerData.KillLogEntry kill = killLogService.claimOldestUnlootedCompletion(data, resolvedSource);
+		boolean matchedCompletion = kill != null;
+		if (matchedCompletion)
+		{
+			resolvedSource = kill.source;
+		}
+		else
+		{
+			kill = killLogService.createLootOnly(captured.date.toString(), captured.occurredAt,
+				resolvedSource, null, captured.drops);
+			data.killLog.add(kill);
+		}
+		TrackerData.LootDay day = data.lootDays.computeIfAbsent(kill.date, ignored -> new TrackerData.LootDay());
 		TrackerData.LootSource source = day.sources.computeIfAbsent(resolvedSource, ignored -> new TrackerData.LootSource());
-		source.drops += pending.drops;
-		for (CapturedItem item : pending.items)
+		source.drops += captured.drops;
+		for (CapturedItem item : captured.items)
 		{
 			TrackerData.LootItem aggregate = source.items.computeIfAbsent(item.itemId,
 				ignored -> new TrackerData.LootItem(item.itemId, item.name));
@@ -716,14 +627,7 @@ public class DailyPvmTrackerPlugin extends Plugin
 				source.totalValue += item.value;
 			}
 		}
-		TrackerData.KillLogEntry kill = new TrackerData.KillLogEntry();
-		kill.id = UUID.randomUUID().toString();
-		kill.date = pending.date.toString();
-		kill.occurredAt = pending.occurredAt;
-		kill.source = resolvedSource;
-		kill.killCount = pending.killCount;
-		kill.kills = pending.drops;
-		for (CapturedItem item : pending.items)
+		for (CapturedItem item : captured.items)
 		{
 			kill.items.add(new TrackerData.KillLootItem(item.itemId, item.name, item.quantity, item.value));
 			if (!data.isLootHidden(resolvedSource, item.itemId))
@@ -731,12 +635,15 @@ public class DailyPvmTrackerPlugin extends Plugin
 				kill.totalValue += item.value;
 			}
 		}
-		data.killLog.add(kill);
-		if (!pending.completionHandled && !attributedToCompletion)
+		if (!matchedCompletion)
 		{
-			killCountService.recordLootCompletionIfMissing(data, pending.date, resolvedSource, source.drops);
+			if (killCountService.recordLootCompletionIfMissing(data, captured.date, resolvedSource, source.drops)
+				&& kill.killCount == null)
+			{
+				kill.killCount = data.lastKnownKillCounts.get(resolvedSource);
+			}
 		}
-		saveAndRefresh(pending.accountHash);
+		saveAndRefresh(captured.accountHash);
 	}
 
 	private void recordTransformation(long accountHash, String intermediateName,
@@ -1086,44 +993,23 @@ public class DailyPvmTrackerPlugin extends Plugin
 		return configManager.getConfig(DailyPvmTrackerConfig.class);
 	}
 
-	private static final class RecentCompletion
-	{
-		private final String source;
-		private final Integer killCount;
-		private final int tick;
-
-		private RecentCompletion(String source, Integer killCount, int tick)
-		{
-			this.source = source;
-			this.killCount = killCount;
-			this.tick = tick;
-		}
-	}
-
-	private static final class PendingLoot
+	private static final class CapturedLoot
 	{
 		private final long accountHash;
 		private final LocalDate date;
-		private String source;
+		private final String source;
 		private final int drops;
 		private final List<CapturedItem> items;
-		private final int tick;
-		private Integer killCount;
 		private final String occurredAt;
-		private boolean completionHandled;
 
-		private PendingLoot(long accountHash, LocalDate date, String source, int drops,
-			List<CapturedItem> items, int tick, boolean completionHandled, Integer killCount,
-			String occurredAt)
+		private CapturedLoot(long accountHash, LocalDate date, String source, int drops,
+			List<CapturedItem> items, String occurredAt)
 		{
 			this.accountHash = accountHash;
 			this.date = date;
 			this.source = source;
 			this.drops = drops;
 			this.items = items;
-			this.tick = tick;
-			this.completionHandled = completionHandled;
-			this.killCount = killCount;
 			this.occurredAt = occurredAt;
 		}
 	}

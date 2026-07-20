@@ -1,7 +1,9 @@
 package com.pvmtracker;
 
 import java.time.LocalDate;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 
 final class KillCountService
 {
@@ -26,17 +28,15 @@ final class KillCountService
 			{
 				return false;
 			}
-			delta = previous == null || RaidLootMatcher.isRaid(boss) ? 1 : exactKillCount - previous;
+			// An exact KC message proves that this completion happened, but a jump in the
+			// absolute count does not prove that the plugin observed the intervening kills.
+			delta = 1;
 			ending = exactKillCount;
 		}
 
 		TrackerData.KcDay day = data.kcDays.computeIfAbsent(date.toString(), ignored -> new TrackerData.KcDay());
 		day.kills.merge(boss, delta, Integer::sum);
-		if (exactKillCount != null && delta > 1)
-		{
-			day.recoveredKills.merge(boss, delta - 1, Integer::sum);
-		}
-		if (previous != null && !(exactKillCount != null && RaidLootMatcher.isRaid(boss)))
+		if (previous != null)
 		{
 			day.startingKillCounts.putIfAbsent(boss, previous);
 		}
@@ -77,9 +77,7 @@ final class KillCountService
 	{
 		TrackerData.KcDay day = data.kcDays.get(date.toString());
 		int recordedKills = day == null ? 0 : day.kills.getOrDefault(boss, 0);
-		int recoveredKills = day == null ? 0 : day.recoveredKills.getOrDefault(boss, 0);
-		int observedKills = Math.max(0, recordedKills - recoveredKills);
-		if (observedKills >= lootDrops)
+		if (recordedKills >= lootDrops)
 		{
 			return false;
 		}
@@ -95,10 +93,9 @@ final class KillCountService
 			return 0;
 		}
 
-		LocalDate intervalStart = data.lastKnownKillCountsAt == null
+		LocalDate baselineDate = data.lastKnownKillCountsAt == null
 			? date : LocalDate.parse(data.lastKnownKillCountsAt);
-		TrackerData.KcDay recoveredDay = null;
-		int recovered = 0;
+		int synchronizedKills = 0;
 		for (Map.Entry<String, Integer> entry : hiscoreCounts.entrySet())
 		{
 			String boss = entry.getKey();
@@ -111,9 +108,9 @@ final class KillCountService
 			}
 			if (remote < local)
 			{
-				if (canCorrectSingleCountDrift(data, intervalStart, boss, local, remote))
+				if (canCorrectSingleCountDrift(data, baselineDate, boss, local, remote))
 				{
-					correctAheadCount(data, intervalStart, boss, 1, remote);
+					correctAheadCount(data, baselineDate, boss, 1, remote);
 				}
 				continue;
 			}
@@ -123,23 +120,97 @@ final class KillCountService
 			}
 
 			int delta = remote - local;
-			if (recoveredDay == null)
-			{
-				recoveredDay = data.kcDays.computeIfAbsent(intervalStart.toString(), ignored -> new TrackerData.KcDay());
-				if (intervalStart.isBefore(date))
-				{
-					recoveredDay.intervalEnd = date.toString();
-				}
-			}
-			recoveredDay.kills.merge(boss, delta, Integer::sum);
-			recoveredDay.recoveredKills.merge(boss, delta, Integer::sum);
-			recoveredDay.startingKillCounts.putIfAbsent(boss, local);
-			recoveredDay.endingKillCounts.put(boss, remote);
 			data.lastKnownKillCounts.put(boss, remote);
-			recovered += delta;
+			synchronizedKills += delta;
 		}
 		data.lastKnownKillCountsAt = date.toString();
-		return recovered;
+		return synchronizedKills;
+	}
+
+	boolean repairLegacyLootKillCounts(TrackerData data)
+	{
+		Set<String> sources = new LinkedHashSet<>(data.lastKnownKillCounts.keySet());
+		for (TrackerData.KillLogEntry kill : data.killLog)
+		{
+			if (kill.source != null)
+			{
+				sources.add(kill.source);
+			}
+		}
+
+		boolean changed = false;
+		for (String source : sources)
+		{
+			changed |= repairLegacyLootKillCounts(data, source);
+		}
+		return changed;
+	}
+
+	private boolean repairLegacyLootKillCounts(TrackerData data, String source)
+	{
+		Integer anchorCount = null;
+		int anchorIndex = -1;
+		boolean changed = false;
+
+		for (int i = 0; i < data.killLog.size(); i++)
+		{
+			TrackerData.KillLogEntry kill = data.killLog.get(i);
+			if (!source.equals(kill.source) || kill.lootCaptured != null || kill.killCount == null)
+			{
+				continue;
+			}
+			if (anchorCount != null)
+			{
+				changed |= fillProvenSequence(data, source, anchorIndex + 1, i + 1,
+					anchorCount, kill.killCount);
+			}
+			anchorCount = kill.killCount;
+			anchorIndex = i;
+		}
+
+		Integer latestKnown = data.lastKnownKillCounts.get(source);
+		if (anchorCount != null && latestKnown != null && latestKnown >= anchorCount)
+		{
+			changed |= fillProvenSequence(data, source, anchorIndex + 1, data.killLog.size(),
+				anchorCount, latestKnown);
+		}
+		return changed;
+	}
+
+	private boolean fillProvenSequence(TrackerData data, String source, int fromIndex, int toIndex,
+		int startingCount, int endingCount)
+	{
+		int observedKills = 0;
+		for (int i = fromIndex; i < toIndex; i++)
+		{
+			TrackerData.KillLogEntry kill = data.killLog.get(i);
+			if (source.equals(kill.source) && kill.lootCaptured == null)
+			{
+				observedKills += Math.max(1, kill.kills);
+			}
+		}
+		if (endingCount - startingCount != observedKills)
+		{
+			return false;
+		}
+
+		boolean changed = false;
+		int count = startingCount;
+		for (int i = fromIndex; i < toIndex; i++)
+		{
+			TrackerData.KillLogEntry kill = data.killLog.get(i);
+			if (!source.equals(kill.source) || kill.lootCaptured != null)
+			{
+				continue;
+			}
+			count += Math.max(1, kill.kills);
+			if (kill.killCount == null)
+			{
+				kill.killCount = count;
+				changed = true;
+			}
+		}
+		return changed;
 	}
 
 	private boolean canCorrectSingleCountDrift(TrackerData data, LocalDate date, String boss, int local, int remote)
@@ -156,7 +227,6 @@ final class KillCountService
 		Integer start = day.startingKillCounts.get(boss);
 		Integer end = day.endingKillCounts.get(boss);
 		int recorded = day.kills.getOrDefault(boss, 0);
-		int recovered = day.recoveredKills.getOrDefault(boss, 0);
-		return start != null && end != null && end == local && recorded - recovered == end - start;
+		return start != null && end != null && end == local && recorded == end - start;
 	}
 }

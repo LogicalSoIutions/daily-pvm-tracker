@@ -9,6 +9,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertTrue;
 
@@ -32,21 +33,31 @@ public class TrackerStoreTest
 		first.lootDays.put("2026-07-15", lootDay);
 		TrackerData.RaidCompletion raid = new TrackerData.RaidCompletion();
 		raid.id = "raid-1";
+		raid.killId = "kill-1";
 		raid.date = "2026-07-15";
 		raid.source = "Chambers of Xeric";
 		raid.personalPoints = 26_028;
 		first.raidCompletions.add(raid);
+		TrackerData.KillLogEntry kill = new TrackerData.KillLogEntry();
+		kill.id = "kill-1";
+		kill.date = "2026-07-15";
+		kill.source = "Chambers of Xeric";
+		kill.killCount = 42;
+		kill.lootCaptured = false;
+		first.killLog.add(kill);
 
 		store.save(11L, first);
 		store.save(22L, second);
 
 		TrackerData loadedFirst = store.load(11L);
 		TrackerData loadedSecond = store.load(22L);
-		assertEquals(3, loadedFirst.schemaVersion);
+		assertEquals(5, loadedFirst.schemaVersion);
 		assertEquals("One", loadedFirst.lastKnownName);
 		assertEquals(Integer.valueOf(42), loadedFirst.lastKnownKillCounts.get("Vorkath"));
 		assertEquals(Long.valueOf(12_500_000L), loadedFirst.lootDays.get("2026-07-15").manualAdjustments.get("Nex"));
 		assertEquals(Integer.valueOf(26_028), loadedFirst.raidCompletions.get(0).personalPoints);
+		assertEquals("kill-1", loadedFirst.raidCompletions.get(0).killId);
+		assertFalse(loadedFirst.killLog.get(0).hasCapturedLoot());
 		assertEquals("Two", loadedSecond.lastKnownName);
 		assertNotSame(loadedFirst, loadedSecond);
 	}
@@ -60,6 +71,31 @@ public class TrackerStoreTest
 		store.save(11L, new TrackerData());
 
 		assertTrue(Files.exists(directory.resolve("11-v1.json")));
+	}
+
+	@Test
+	public void closesLegacyProfileBeforePersistingV4Migration() throws Exception
+	{
+		Path directory = temporaryFolder.newFolder("daily-pvm-tracker-migration").toPath();
+		Path profile = directory.resolve("11-v1.json");
+		TrackerData legacy = new TrackerData();
+		legacy.schemaVersion = 3;
+		legacy.lastKnownName = "Logical";
+		legacy.lastKnownKillCounts.put("Araxxor", 154);
+		try (java.io.Writer writer = Files.newBufferedWriter(profile))
+		{
+			new GsonBuilder().create().toJson(legacy, writer);
+		}
+
+		TrackerData loaded = new TrackerStore(new GsonBuilder().create(), directory).load(11L);
+
+		assertEquals(5, loaded.schemaVersion);
+		assertEquals("Logical", loaded.lastKnownName);
+		assertEquals(Integer.valueOf(154), loaded.lastKnownKillCounts.get("Araxxor"));
+		try (Reader reader = Files.newBufferedReader(profile))
+		{
+			assertEquals(5, new GsonBuilder().create().fromJson(reader, TrackerData.class).schemaVersion);
+		}
 	}
 
 	@Test
@@ -85,6 +121,13 @@ public class TrackerStoreTest
 		TrackerData data = new TrackerData();
 		data.lastKnownName = "Logical";
 		data.lastKnownKillCounts.put("Vorkath", 42);
+		TrackerData.KillLogEntry kill = new TrackerData.KillLogEntry();
+		kill.id = "kill-1";
+		kill.lootCaptured = false;
+		data.killLog.add(kill);
+		TrackerData.RaidCompletion raid = new TrackerData.RaidCompletion();
+		raid.killId = "kill-1";
+		data.raidCompletions.add(raid);
 		Path destination = temporaryFolder.getRoot().toPath().resolve("daily-pvm-tracker-Logical.json");
 
 		store.export(destination, data);
@@ -95,9 +138,14 @@ public class TrackerStoreTest
 		{
 			exported = new GsonBuilder().create().fromJson(reader, TrackerData.class);
 		}
-		assertEquals(3, exported.schemaVersion);
+		assertEquals(5, exported.schemaVersion);
 		assertEquals("Logical", exported.lastKnownName);
 		assertEquals(Integer.valueOf(42), exported.lastKnownKillCounts.get("Vorkath"));
+		assertFalse(exported.killLog.get(0).hasCapturedLoot());
+		assertEquals("kill-1", exported.raidCompletions.get(0).killId);
+		String exportedJson = new String(Files.readAllBytes(destination), java.nio.charset.StandardCharsets.UTF_8);
+		assertTrue(exportedJson.contains("lootCaptured"));
+		assertTrue(exportedJson.contains("killId"));
 	}
 
 	@Test

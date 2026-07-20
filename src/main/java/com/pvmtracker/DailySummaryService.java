@@ -25,19 +25,14 @@ final class DailySummaryService
 			TrackerData.KcDay kcDay = data.kcDays.get(date.toString());
 			Map<String, Integer> kills = kcDay == null
 				? new LinkedHashMap<>() : new LinkedHashMap<>(kcDay.kills);
-			Map<String, Integer> recoveredKills = kcDay == null
-				? new LinkedHashMap<>() : new LinkedHashMap<>(kcDay.recoveredKills);
 			Map<String, Integer> startingCounts = kcDay == null
 				? new LinkedHashMap<>() : new LinkedHashMap<>(kcDay.startingKillCounts);
 			Map<String, Integer> endingCounts = kcDay == null
 				? new LinkedHashMap<>() : new LinkedHashMap<>(kcDay.endingKillCounts);
-			LocalDate intervalEnd = kcDay != null && kcDay.intervalEnd != null
-				? LocalDate.parse(kcDay.intervalEnd) : date.isBefore(today) ? date.plusDays(1) : null;
 			TrackerData.LootDay lootDay = data.lootDays.get(date.toString());
 			List<DailySummary.LootSummary> loot = summarizeLoot(data, lootDay);
 			List<DailySummary.RaidSummary> raids = summarizeRaids(data, date);
 			int totalKills = kills.values().stream().mapToInt(Integer::intValue).sum();
-			int totalRecoveredKills = recoveredKills.values().stream().mapToInt(Integer::intValue).sum();
 			long trackedLootValue = loot.stream().mapToLong(source -> source.value).sum();
 			long confirmedSalesValue = loot.stream().mapToLong(source -> source.confirmedValue).sum();
 			Map<String, Long> adjustments = lootDay == null
@@ -48,8 +43,8 @@ final class DailySummaryService
 			boolean completed = date.isBefore(today);
 			if (showEmptyDays || completed || totalKills > 0 || totalValue > 0 || !raids.isEmpty())
 			{
-				result.add(new DailySummary(date, intervalEnd, completed,
-					kills, recoveredKills, startingCounts, endingCounts, loot, raids, totalKills, totalRecoveredKills,
+				result.add(new DailySummary(date, completed,
+					kills, startingCounts, endingCounts, loot, raids, totalKills,
 					trackedLootValue, confirmedValue, adjustments, totalAdjustment, totalValue));
 			}
 		}

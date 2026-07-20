@@ -10,9 +10,9 @@ Data is stored in the `.runelite/pvm-raid-daily-tracker/` directory by default.
 Users may explicitly opt in to uploading their complete character snapshot to PvM Hub; the setting
 is disabled by default and warns that the upload submits their IP address to a third-party server.
 Enabled uploads are sent at
-most once every 30 minutes. An asynchronous hiscore lookup at login establishes or validates
-absolute KC totals. When hiscores reveal activity missed while the plugin was closed, the difference
-is marked as recovered and shown as a multi-day interval when necessary.
+most once every 5 minutes. An asynchronous hiscore lookup at login establishes the absolute KC
+baseline. Daily kill totals include only completions observed locally by the plugin; hiscore changes
+while the plugin was closed are not added to the timeline.
 
 ## Coverage
 
@@ -30,19 +30,19 @@ was captured.
 
 Each locally observed raid completion also records the contribution data RuneLite exposes. Chambers
 stores personal and team points; Tombs stores personal reward points, loot-eligible points after the
-starting 5,000-point deduction, and raid level. The plugin calculates and displays point-based expected
-unique value from the supplied raid tables. Theatre does not expose a documented point-to-odds formula,
-so it is clearly shown as a deathless four-player baseline derived from its published team rate rather
-than as fabricated contribution points. These estimates are retained per completion and do not replace
-the value of loot actually captured by Loot Tracker.
+starting 5,000-point deduction, and raid level. Theatre completion records do not fabricate contribution
+points that RuneLite does not expose.
 
 The overview includes a **Save data** button. It opens a system save dialog with a character-specific
 JSON filename, allowing the user to open the snapshot through PvM Hub's private local-file viewer.
 Saving a copy does not enable website uploads or change the plugin's stored history.
 
-Each newly observed loot event also creates an itemized kill-log entry with its timestamp, source,
-loot item IDs, quantities, captured values, and exact KC when the completion message supplies one.
-PvM Hub uses these entries for the click-through kill history on each boss card.
+Each observed completion creates a durable kill-log entry immediately, before loot is required. A later
+Loot Tracker event fills the oldest unlooted completion for the matching boss or raid, so delayed rewards
+such as an instanced Maggot King loot claim remain attached to the original kill even across a long delay.
+Raid metadata carries the kill entry's stable ID. If RuneLite reports loot before the KC message, the
+plugin merges the two records when that message arrives instead of creating a duplicate. PvM Hub uses
+these itemized entries for the click-through kill history on each boss card.
 
 ## PvM Hub website
 
@@ -57,7 +57,7 @@ There are two ways to view tracker data on the website:
   Hub. The file is read only in the current browser tab; it is not uploaded or stored by the website
   and disappears from the page when that local view is closed.
 - **Automatic profile updates:** Enable **Upload to PvM Hub (optional)** in the plugin settings to
-  send the character's complete snapshot at most once every 30 minutes. This creates or updates a
+  send the character's complete snapshot at most once every 5 minutes. This creates or updates a
   website profile that can be found by searching for the character's RuneScape name. This mode sends
   the snapshot and IP address to a third-party server and is disabled by default.
 

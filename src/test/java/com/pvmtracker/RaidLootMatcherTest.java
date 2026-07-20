@@ -19,28 +19,6 @@ public class RaidLootMatcherTest
 	}
 
 	@Test
-	public void keepsRaidCompletionUntilTheMatchingChestArrives()
-	{
-		assertTrue(DailyPvmTrackerPlugin.canMatchCompletionLoot(10_000, 100,
-			"Theatre of Blood", "Theatre of Blood: Entry Mode"));
-		assertFalse(DailyPvmTrackerPlugin.canMatchCompletionLoot(10_000, 100,
-			"Vorkath", "Theatre of Blood: Entry Mode"));
-		assertFalse(DailyPvmTrackerPlugin.canMatchCompletionLoot(10_000, 100,
-			"Vorkath", "Vorkath"));
-	}
-
-	@Test
-	public void keepsGauntletCompletionUntilTheRewardChestArrives()
-	{
-		assertTrue(DailyPvmTrackerPlugin.canMatchCompletionLoot(10_000, 100,
-			"The Corrupted Gauntlet", "The Corrupted Gauntlet"));
-		assertTrue(DailyPvmTrackerPlugin.canMatchCompletionLoot(10_000, 100,
-			"The Gauntlet", "The Gauntlet"));
-		assertFalse(DailyPvmTrackerPlugin.canMatchCompletionLoot(10_000, 100,
-			"The Gauntlet", "The Corrupted Gauntlet"));
-	}
-
-	@Test
 	public void attributesGenericToaLootToNearbyExpertCompletion()
 	{
 		TrackerData.RaidCompletion completion = new TrackerData.RaidCompletion();
